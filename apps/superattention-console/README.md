@@ -27,9 +27,63 @@ http://127.0.0.1:5178
 
 ## V1 Scope
 
-V1 is a static, interactive frontend demo. It does not call an AI API yet.
+V1 now supports two modes:
 
-It shows how superattention.ai can help The Pickle Romance plan and execute the Aam Romantics campaign.
+- Static demo mode when opened with `python3 -m http.server`.
+- Production mode on Vercel with Anthropic generation and Supabase persistence.
+
+It shows how superattention.ai can help The Pickle Romance plan and execute the Aam Romantics campaign, and it can generate new campaign plans when the backend environment is configured.
+
+## Production Setup
+
+Recommended deployment:
+
+```text
+Vercel frontend + Vercel serverless API routes + Supabase database
+```
+
+### 1. Create Supabase Table
+
+In Supabase SQL Editor, run:
+
+```text
+supabase/schema.sql
+```
+
+### 2. Configure Environment Variables
+
+In Vercel, add:
+
+```text
+ANTHROPIC_API_KEY
+ANTHROPIC_MODEL
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_CAMPAIGNS_TABLE
+```
+
+Use `.env.example` as the template.
+
+Never expose `ANTHROPIC_API_KEY` or `SUPABASE_SERVICE_ROLE_KEY` in browser code.
+
+### 3. Deploy On Vercel
+
+Set the project root to:
+
+```text
+apps/superattention-console
+```
+
+No build command is required for the static frontend.
+
+### 4. Production Capabilities
+
+When deployed with environment variables, V1 can:
+
+- collect brand and growth goal inputs
+- call Anthropic securely through `/api/generate-plan`
+- save generated campaigns to Supabase
+- fetch recent saved campaigns through `/api/campaigns`
 
 ## V2 Direction
 

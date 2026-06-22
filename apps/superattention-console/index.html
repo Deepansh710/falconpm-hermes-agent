@@ -29,6 +29,7 @@
         </div>
         <div class="nav-pills">
           <button class="pill active" data-jump="dashboard">Dashboard</button>
+          <button class="pill" data-jump="generator">Generator</button>
           <button class="pill" data-jump="campaign">Campaign</button>
           <button class="pill" data-jump="studio">Studio</button>
           <button class="pill" data-jump="tracker">Tracker</button>
@@ -111,6 +112,102 @@
           <strong>Learning</strong>
           <p>Track what worked and sharpen next week's growth loop.</p>
         </article>
+      </section>
+
+      <section id="generator" class="section generator panel">
+        <div class="section-title">
+          <span>Production V1</span>
+          <h2>Generate a fresh growth plan</h2>
+          <p>
+            Enter any D2C product, offer, and revenue goal. In production,
+            superattention.ai calls Anthropic securely and saves the campaign to
+            Supabase.
+          </p>
+        </div>
+
+        <div class="generator-layout">
+          <form class="generator-form" id="generatorForm">
+            <label>
+              Brand name
+              <input name="brandName" value="The Pickle Romance" required />
+            </label>
+            <label>
+              Category
+              <input name="category" value="Homemade Indian pickles" required />
+            </label>
+            <label>
+              Product
+              <input name="product" value="Aam Romantics Combo" required />
+            </label>
+            <label>
+              Price
+              <input name="price" value="Rs. 599" required />
+            </label>
+            <label class="wide">
+              Offer
+              <input
+                name="offer"
+                value="3 x 200g jars: Aam ka Achar, Aam ka Chunda, Hing ka Achar"
+                required
+              />
+            </label>
+            <label class="wide">
+              Target customer
+              <textarea name="audience" required>Working mothers in Faridabad, age 30-40, who like pickles but hesitate because market pickles feel too oily.</textarea>
+            </label>
+            <label>
+              Current monthly revenue
+              <input name="currentRevenue" value="Under Rs. 1 lakh" required />
+            </label>
+            <label>
+              Revenue goal
+              <input name="revenueGoal" value="Rs. 50,000 in 30 days" required />
+            </label>
+            <label>
+              Order channel
+              <input name="orderChannel" value="WhatsApp with UPI before delivery" required />
+            </label>
+            <label>
+              Delivery area
+              <input name="deliveryArea" value="Faridabad and Delhi NCR" required />
+            </label>
+            <label>
+              Content capacity
+              <input name="contentCapacity" value="4-5 Reels per week" required />
+            </label>
+            <label>
+              Brand tone
+              <input name="brandTone" value="Homemade, nostalgic, playful, trustworthy" required />
+            </label>
+
+            <fieldset class="channel-field wide">
+              <legend>Growth engines</legend>
+              <label><input type="checkbox" name="channels" value="Instagram Reels" checked /> Instagram Reels</label>
+              <label><input type="checkbox" name="channels" value="Website conversion" checked /> Website conversion</label>
+              <label><input type="checkbox" name="channels" value="WhatsApp campaign" checked /> WhatsApp campaign</label>
+              <label><input type="checkbox" name="channels" value="Email campaign" /> Email campaign</label>
+              <label><input type="checkbox" name="channels" value="Founder LinkedIn" checked /> Founder LinkedIn</label>
+            </fieldset>
+
+            <button class="primary-action wide" type="submit">
+              Generate with AI
+            </button>
+          </form>
+
+          <div class="generated-panel">
+            <div class="builder-header">
+              <span>Live output</span>
+              <strong id="generationStatus">Ready</strong>
+            </div>
+            <div class="generated-output" id="generatedOutput">
+              Production V1 is ready for your Anthropic API key and Supabase
+              project. Submit the form after deploying to Vercel.
+            </div>
+            <button class="copy-btn" id="copyGenerated" type="button">
+              Copy generated plan
+            </button>
+          </div>
+        </div>
       </section>
 
       <section id="campaign" class="section">
