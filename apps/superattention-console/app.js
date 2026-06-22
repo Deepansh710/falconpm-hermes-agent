@@ -190,6 +190,10 @@ const assetTabs = document.querySelector("#assetTabs");
 const assetCard = document.querySelector("#assetCard");
 const trackerForm = document.querySelector("#trackerForm");
 const insightCard = document.querySelector("#insightCard");
+const generatorForm = document.querySelector("#generatorForm");
+const generatedOutput = document.querySelector("#generatedOutput");
+const generationStatus = document.querySelector("#generationStatus");
+const copyGenerated = document.querySelector("#copyGenerated");
 
 function renderTimeline() {
   timeline.innerHTML = weeks
@@ -268,6 +272,72 @@ function updateInsights() {
   `;
 }
 
+function getGeneratorInput() {
+  const data = new FormData(generatorForm);
+
+  return {
+    brandName: data.get("brandName")?.toString().trim(),
+    category: data.get("category")?.toString().trim(),
+    product: data.get("product")?.toString().trim(),
+    price: data.get("price")?.toString().trim(),
+    offer: data.get("offer")?.toString().trim(),
+    audience: data.get("audience")?.toString().trim(),
+    currentRevenue: data.get("currentRevenue")?.toString().trim(),
+    revenueGoal: data.get("revenueGoal")?.toString().trim(),
+    orderChannel: data.get("orderChannel")?.toString().trim(),
+    deliveryArea: data.get("deliveryArea")?.toString().trim(),
+    contentCapacity: data.get("contentCapacity")?.toString().trim(),
+    brandTone: data.get("brandTone")?.toString().trim(),
+    channels: data.getAll("channels").map((channel) => channel.toString()),
+  };
+}
+
+async function generatePlan(event) {
+  event.preventDefault();
+  const input = getGeneratorInput();
+
+  generatedOutput.classList.remove("error");
+  generationStatus.textContent = "Generating";
+  generatedOutput.textContent =
+    "superattention.ai is building the 30-day growth plan...";
+
+  try {
+    const response = await fetch("/api/generate-plan", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(input),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to generate plan");
+    }
+
+    generationStatus.textContent = data.saveResult?.saved
+      ? "Generated + saved"
+      : "Generated";
+    generatedOutput.textContent = data.plan;
+  } catch (error) {
+    generationStatus.textContent = "Setup needed";
+    generatedOutput.classList.add("error");
+    generatedOutput.textContent = `Could not generate yet.
+
+This usually means you are running the static local server or Vercel environment variables are not configured.
+
+Required production setup:
+- Deploy apps/superattention-console on Vercel
+- Add ANTHROPIC_API_KEY
+- Add SUPABASE_URL
+- Add SUPABASE_SERVICE_ROLE_KEY
+- Run supabase/schema.sql
+
+Error: ${error.message}`;
+  }
+}
+
 document.addEventListener("click", async (event) => {
   const jump = event.target.closest("[data-jump]");
   if (jump) {
@@ -295,6 +365,14 @@ document.addEventListener("click", async (event) => {
 });
 
 trackerForm.addEventListener("input", updateInsights);
+generatorForm.addEventListener("submit", generatePlan);
+copyGenerated.addEventListener("click", async () => {
+  await navigator.clipboard.writeText(generatedOutput.textContent);
+  copyGenerated.textContent = "Copied";
+  setTimeout(() => {
+    copyGenerated.textContent = "Copy generated plan";
+  }, 1400);
+});
 
 renderTimeline();
 renderTabs();

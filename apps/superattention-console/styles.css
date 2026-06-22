@@ -586,30 +586,40 @@ button {
   color: var(--muted);
 }
 
-.tracker {
+.tracker,
+.generator {
   padding: clamp(22px, 4vw, 40px);
 }
 
-.tracker-layout {
+.tracker-layout,
+.generator-layout {
   display: grid;
   grid-template-columns: 0.45fr 0.55fr;
   gap: 20px;
 }
 
-.tracker-form {
+.tracker-form,
+.generator-form {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
 }
 
-.tracker-form label {
+.tracker-form label,
+.generator-form label {
   display: grid;
   gap: 8px;
   color: var(--muted);
   font-size: 0.86rem;
 }
 
-.tracker-form input {
+.generator-form .wide {
+  grid-column: 1 / -1;
+}
+
+.tracker-form input,
+.generator-form input,
+.generator-form textarea {
   width: 100%;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 18px;
@@ -619,8 +629,72 @@ button {
   outline: none;
 }
 
-.tracker-form input:focus {
+.generator-form textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.tracker-form input:focus,
+.generator-form input:focus,
+.generator-form textarea:focus {
   border-color: rgba(156, 255, 143, 0.52);
+}
+
+.channel-field {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 22px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.channel-field legend {
+  color: var(--green);
+  font-weight: 800;
+  padding: 0 8px;
+}
+
+.channel-field label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.channel-field input {
+  width: auto;
+}
+
+.generated-panel {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-height: 100%;
+  padding: 22px;
+  border-radius: 34px;
+  border: 1px solid var(--stroke);
+  background:
+    radial-gradient(circle at top right, rgba(255, 189, 69, 0.16), transparent 18rem),
+    rgba(0, 0, 0, 0.2);
+}
+
+.generated-output {
+  min-height: 520px;
+  max-height: 720px;
+  overflow: auto;
+  padding: 18px;
+  border-radius: 24px;
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--cream);
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.generated-output.error {
+  color: #ffd1c7;
+  border: 1px solid rgba(255, 95, 61, 0.35);
 }
 
 .insight-card {
@@ -701,7 +775,8 @@ button {
 @media (max-width: 960px) {
   .hero,
   .studio-grid,
-  .tracker-layout {
+  .tracker-layout,
+  .generator-layout {
     grid-template-columns: 1fr;
   }
 
@@ -738,6 +813,8 @@ button {
   .experiment-grid,
   .metric-grid,
   .tracker-form,
+  .generator-form,
+  .channel-field,
   .upload-grid {
     grid-template-columns: 1fr;
   }
