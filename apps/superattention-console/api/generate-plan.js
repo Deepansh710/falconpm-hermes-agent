@@ -14,7 +14,35 @@ function requireEnv(name) {
   return value;
 }
 
+function tableName() {
+  return process.env.SUPABASE_CAMPAIGNS_TABLE || "campaigns";
+}
+
+function supabaseHeaders(serviceRoleKey, extra = {}) {
+  return {
+    apikey: serviceRoleKey,
+    authorization: `Bearer ${serviceRoleKey}`,
+    ...extra,
+  };
+}
+
+function formatCapacity(input) {
+  if (input.contentCapacity) return input.contentCapacity;
+  const parts = [];
+  if (input.reelsPerWeek != null) parts.push(`${input.reelsPerWeek} Reels/week`);
+  if (input.whatsappBroadcasts === "yes") parts.push("WhatsApp broadcasts");
+  if (input.storiesPerWeek === "yes") parts.push("Instagram Stories");
+  if (input.onCamera === "no") parts.push("not comfortable on camera");
+  if (input.hoursPerWeek) parts.push(`~${input.hoursPerWeek} hrs/week`);
+  return parts.join(", ") || "not specified";
+}
+
 function buildPrompt(input, priorLearnings = null) {
+  const productBundle = input.productBundle || input.offer || "";
+  const promoHook = input.promoHook || "";
+  const hesitation = input.hesitationLabel || input.audienceHesitation || "";
+  const capacity = formatCapacity(input);
+
   const learningsBlock = priorLearnings
     ? `
 Prior closed campaign learnings (use these to improve this plan):
@@ -27,18 +55,35 @@ Prior closed campaign learnings (use these to improve this plan):
 `
     : "";
 
+  const phasedBlock = input.usePhasedPlan
+    ? `
+Goal mode: STRETCH — founder chose an aggressive target. Structure the plan in two phases:
+- Phase 1 (Weeks 1-2): realistic proof — repeat orders, WhatsApp conversion, one strong Reel hook.
+- Phase 2 (Weeks 3-4): scale what worked toward stretch goal ${input.revenueGoal}.
+Mention Phase 1 and Phase 2 explicitly in weekly themes.
+`
+    : input.goalChoice === "recommended"
+      ? `
+Goal mode: RECOMMENDED — use the recommended revenue target as primaryGoal in summary (${input.recommendedGoal || input.revenueGoal}).
+`
+      : "";
+
+  const channelLimit =
+    input.brandStage?.includes("First sales") || input.brandStage?.includes("Idea")
+      ? "Use at most 2 channels. Prefer Instagram Reels + WhatsApp campaign for early food D2C."
+      : "";
+
   return `
-You are superattention.ai, an AI growth system for early Indian D2C brands.
+You are superattention.ai, an AI growth coach for early Indian D2C brands.
 
-Your job is to turn attention into revenue. Think like a senior growth operator who understands content, offers, website conversion, WhatsApp/email campaigns, founder-led LinkedIn, and weekly learning loops.
-
-Create a production-ready 30-day growth plan using the details below.
+Turn attention into revenue. Be specific, practical, and honest about what a solo founder can execute.
 
 Brand:
 - Name: ${input.brandName}
 - Category: ${input.category}
 - Current monthly revenue: ${input.currentRevenue}
 - Revenue goal: ${input.revenueGoal}
+- Recommended goal: ${input.recommendedGoal || "same as revenue goal"}
 - Brand tone: ${input.brandTone}
 - Brand stage: ${input.brandStage || "not specified"}
 
@@ -50,17 +95,27 @@ Brand story:
 Product / offer:
 - Product: ${input.product}
 - Price: ${input.price}
-- Offer: ${input.offer}
+- Product bundle (what they get): ${productBundle}
+- Promo hook (why order now): ${promoHook || "none"}
 
 Audience and market:
 - Target customer: ${input.audience}
+- Main hesitation: ${hesitation || "see audience text"}
 - Delivery area: ${input.deliveryArea}
 - Order channel: ${input.orderChannel}
-- Content capacity: ${input.contentCapacity}
+- Content capacity: ${capacity}
 
 Channels to use:
 ${input.channels.map((channel) => `- ${channel}`).join("\n")}
+${channelLimit}
+${phasedBlock}
 ${learningsBlock}
+
+CONTENT RULES (mandatory):
+- Promo hook "${promoHook}" MUST appear in every WhatsApp message and at least one Reel CTA (if promo hook is not empty).
+- Address hesitation "${hesitation}" in at least one Reel hook and one WhatsApp message.
+- Respect content capacity — do not assign more Reels than founder can shoot.
+
 Return ONLY valid JSON. Do not wrap it in markdown. Do not include commentary before or after JSON.
 
 Use this exact structure:
@@ -119,8 +174,6 @@ Constraints (critical for valid JSON output):
 - Keep every string under 120 characters. No newlines inside JSON strings.
 - Escape quotes inside strings with backslash.
 - Do not truncate — if running long, shorten copy instead of cutting JSON mid-string.
-
-Be specific, practical, revenue-focused, and suitable for a founder with limited time and budget.
 `.trim();
 }
 
@@ -231,7 +284,7 @@ async function requestAnthropic({ model, maxTokens, prompt }) {
 async function fetchLastClosedLearnings(brandName) {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const table = process.env.SUPABASE_CAMPAIGNS_TABLE || "campaigns";
+  const table = tableName();
 
   if (!supabaseUrl || !serviceRoleKey || !brandName) {
     return null;
@@ -241,10 +294,7 @@ async function fetchLastClosedLearnings(brandName) {
   const response = await fetch(
     `${supabaseUrl}/rest/v1/${table}?brand_name=eq.${encodeURIComponent(quotedBrand)}&select=metrics,created_at&order=created_at.desc&limit=10`,
     {
-      headers: {
-        apikey: serviceRoleKey,
-        authorization: `Bearer ${serviceRoleKey}`,
-      },
+      headers: supabaseHeaders(serviceRoleKey),
     },
   );
 
@@ -264,6 +314,42 @@ async function fetchLastClosedLearnings(brandName) {
     finalRevenue: tracker?.revenue,
     finalOrders: tracker?.orders,
   };
+}
+
+async function pauseLiveCampaignsForBrand(brandName) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const table = tableName();
+
+  if (!supabaseUrl || !serviceRoleKey || !brandName) return;
+
+  const quotedBrand = `"${String(brandName).replace(/"/g, '\\"')}"`;
+  const listRes = await fetch(
+    `${supabaseUrl}/rest/v1/${table}?brand_name=eq.${encodeURIComponent(quotedBrand)}&select=id,metrics&order=created_at.desc&limit=20`,
+    { headers: supabaseHeaders(serviceRoleKey) },
+  );
+  const rows = await listRes.json();
+  if (!listRes.ok || !Array.isArray(rows)) return;
+
+  const liveRows = rows.filter((row) => row.metrics?.status === "live");
+  await Promise.all(
+    liveRows.map((row) =>
+      fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${row.id}`, {
+        method: "PATCH",
+        headers: supabaseHeaders(serviceRoleKey, {
+          "content-type": "application/json",
+        }),
+        body: JSON.stringify({
+          metrics: {
+            ...row.metrics,
+            status: "paused",
+            pausedAt: new Date().toISOString(),
+            pausedReason: "new_campaign_generated",
+          },
+        }),
+      }),
+    ),
+  );
 }
 
 async function callAnthropic(input, priorLearnings) {
@@ -311,20 +397,20 @@ Your previous response was truncated or invalid JSON. Return the same plan again
 async function saveCampaign(input, plan) {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const table = process.env.SUPABASE_CAMPAIGNS_TABLE || "campaigns";
+  const table = tableName();
 
   if (!supabaseUrl || !serviceRoleKey) {
     return { saved: false, reason: "Supabase environment variables not configured" };
   }
 
+  await pauseLiveCampaignsForBrand(input.brandName);
+
   const response = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
     method: "POST",
-    headers: {
-      apikey: serviceRoleKey,
-      authorization: `Bearer ${serviceRoleKey}`,
+    headers: supabaseHeaders(serviceRoleKey, {
       "content-type": "application/json",
       prefer: "return=representation",
-    },
+    }),
     body: JSON.stringify({
       brand_name: input.brandName,
       product: input.product,
@@ -332,7 +418,7 @@ async function saveCampaign(input, plan) {
       audience: input.audience,
       channels: input.channels,
       delivery_area: input.deliveryArea,
-      content_capacity: input.contentCapacity,
+      content_capacity: formatCapacity(input),
       plan_text: JSON.stringify(plan, null, 2),
       input_payload: input,
       metrics: { status: "live" },
@@ -354,12 +440,10 @@ function validateInput(input) {
     "category",
     "product",
     "price",
-    "offer",
     "audience",
     "revenueGoal",
     "orderChannel",
     "deliveryArea",
-    "contentCapacity",
     "brandTone",
     "currentRevenue",
     "brandMission",
@@ -373,15 +457,17 @@ function validateInput(input) {
     }
   }
 
+  const bundle = input.productBundle || input.offer;
+  if (!bundle || typeof bundle !== "string") {
+    return "productBundle is required";
+  }
+
   if (!Array.isArray(input.channels) || input.channels.length === 0) {
     return "At least one growth channel is required";
   }
 
-  const optionalStory = ["brandMission", "brandDifferentiation", "brandStage", "pastFailures"];
-  for (const field of optionalStory) {
-    if (input[field] != null && typeof input[field] !== "string") {
-      return `${field} must be a string`;
-    }
+  if (input.discoveryMode && !input.discoveryOverride) {
+    return "Complete Discovery Week or use override before generating full plan";
   }
 
   return null;
@@ -415,3 +501,7 @@ module.exports = async function handler(req, res) {
     });
   }
 };
+
+// Export for tests
+module.exports.buildPrompt = buildPrompt;
+module.exports.validateInput = validateInput;

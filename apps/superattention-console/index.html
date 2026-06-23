@@ -184,15 +184,21 @@
       <!-- Brand Setup -->
       <section class="view" id="view-setup" data-view="setup">
         <header class="page-header">
-          <h1>Configure Your <span class="gradient-text">Brand Core</span></h1>
-          <p>
-            Refine your AI focus. Enter a real product, audience, and revenue goal—nothing is
-            hardcoded.
-          </p>
+          <h1>Build Your <span class="gradient-text">Growth Brief</span></h1>
+          <p>Short steps. Plain words. We help you think — then build your 30-day plan.</p>
         </header>
+
+        <div class="setup-wizard-nav" id="setupWizardNav">
+          <button class="wizard-step active" data-step="1" type="button">1. Basics</button>
+          <button class="wizard-step" data-step="2" type="button">2. Customer</button>
+          <button class="wizard-step" data-step="3" type="button">3. Offer</button>
+          <button class="wizard-step" data-step="4" type="button">4. Goal</button>
+          <button class="wizard-step" data-step="5" type="button">5. Story</button>
+        </div>
 
         <div class="setup-grid">
           <form class="glass-card setup-form" id="generatorForm" novalidate>
+            <div class="setup-step" data-setup-step="1">
             <p class="form-section-title">Brand basics</p>
             <div class="form-block">
               <label class="field-label"><span class="material-symbols-outlined">label</span> Brand Identity</label>
@@ -221,17 +227,75 @@
                 <input name="currentRevenue" type="number" min="0" step="1" placeholder="10000" required />
               </div>
             </div>
-            <div class="form-block">
-              <label class="field-label">Offer</label>
-              <p class="field-hint">What the customer gets for the price—size, flavours, delivery included or not.</p>
-              <input name="offer" placeholder="e.g. 700g Aam ka Achar non-oily jar" required minlength="5" />
-            </div>
-            <div class="form-block">
-              <label class="field-label"><span class="material-symbols-outlined">groups</span> Target Audience</label>
-              <p class="field-hint">Who they are · where they live · main hesitation before buying.</p>
-              <textarea name="audience" placeholder="Working mothers in Faridabad, 30-40. They like pickles but avoid oily market brands." required minlength="20"></textarea>
             </div>
 
+            <div class="setup-step hidden" data-setup-step="2">
+              <p class="form-section-title">Who is your customer?</p>
+              <p class="coach-intro">Answer in your own words. Not sure? Pick "I'm not sure" — we'll give you a 1-week checklist.</p>
+              <div class="form-block">
+                <label class="field-label">Who actually buys?</label>
+                <p class="field-hint">We ask because your Reels and WhatsApp must speak to one person, not everyone.</p>
+                <input name="whoBuys" placeholder="e.g. Working moms in Faridabad" />
+                <label class="inline-check"><input type="checkbox" name="whoBuysUnsure" /> I'm not sure yet</label>
+              </div>
+              <div class="form-block">
+                <label class="field-label">Where do they live?</label>
+                <p class="field-hint">City or areas you can actually deliver to.</p>
+                <input name="whereLive" placeholder="e.g. Faridabad Sector 15-21" />
+                <label class="inline-check"><input type="checkbox" name="whereLiveUnsure" /> I'm not sure yet</label>
+              </div>
+              <div class="form-block">
+                <label class="field-label">What do they buy instead of you?</label>
+                <p class="field-hint">Local auntie, supermarket brand, Swiggy — whoever you compete with today.</p>
+                <input name="substitute" placeholder="e.g. Mother's Recipe or local home chef" />
+                <label class="inline-check"><input type="checkbox" name="substituteUnsure" /> I'm not sure yet</label>
+              </div>
+              <div class="form-block">
+                <label class="field-label">Why do they hesitate?</label>
+                <p class="field-hint">The main reason they don't order yet.</p>
+                <select name="hesitation">
+                  <option value="">Select or skip</option>
+                  <option value="price">Price feels high</option>
+                  <option value="trust">Don't trust a new brand</option>
+                  <option value="taste">Not sure about taste</option>
+                  <option value="oily">Worried it's too oily / unhealthy</option>
+                  <option value="convenience">Ordering feels inconvenient</option>
+                  <option value="unknown">Don't know the brand</option>
+                  <option value="other">Other</option>
+                  <option value="not_sure">I'm not sure yet</option>
+                </select>
+              </div>
+              <div class="form-block">
+                <label class="field-label">How sure are you about this customer?</label>
+                <select name="audienceConfidence" required>
+                  <option value="">Select</option>
+                  <option value="very_sure">Very sure — I've sold to them</option>
+                  <option value="somewhat">Somewhat — a few orders, not clear</option>
+                  <option value="not_sure">Not sure yet — mostly guessing</option>
+                </select>
+              </div>
+              <textarea name="audience" class="hidden" aria-hidden="true"></textarea>
+              <input type="hidden" name="hesitationLabel" />
+              <button class="btn-secondary" id="coachAudienceBtn" type="button">Help me write this clearly</button>
+              <p class="field-hint" id="audienceCoachStatus"></p>
+            </div>
+
+            <div class="setup-step hidden" data-setup-step="3">
+              <p class="form-section-title">Your offer</p>
+              <div class="form-block">
+                <label class="field-label">What's in the jar / box?</label>
+                <p class="field-hint">Size, flavour, what they get for the price.</p>
+                <input name="productBundle" placeholder="e.g. 700g Aam ka Achar non-oily jar" required minlength="5" />
+              </div>
+              <div class="form-block">
+                <label class="field-label">Why order now? (promo hook)</label>
+                <p class="field-hint">Free delivery, first-order off, combo — optional but powerful.</p>
+                <input name="promoHook" placeholder="e.g. Free next-day delivery in Faridabad" />
+              </div>
+              <input type="hidden" name="offer" />
+            </div>
+
+            <div class="setup-step hidden" data-setup-step="5">
             <p class="form-section-title">Brand story</p>
             <div class="form-block">
               <label class="field-label">Why this brand exists</label>
@@ -265,12 +329,40 @@
                 </datalist>
               </div>
             </div>
+            <p class="form-section-title">What didn't work before? (optional)</p>
+            <p class="field-hint">Tick what applies — we'll turn it into a note for the AI.</p>
+            <div class="form-row">
+              <div class="form-block">
+                <label class="field-label">Channel tried</label>
+                <select name="failChannel">
+                  <option value="">None / first campaign</option>
+                  <option value="Instagram Reels">Instagram Reels</option>
+                  <option value="WhatsApp">WhatsApp</option>
+                  <option value="Discount post">Discount post</option>
+                  <option value="Ads">Paid ads</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div class="form-block">
+                <label class="field-label">What happened?</label>
+                <select name="failOutcome">
+                  <option value="">Select</option>
+                  <option value="views but no orders">Views but no orders</option>
+                  <option value="no views">Almost no views</option>
+                  <option value="inquiries but no payment">Chats but no payment</option>
+                  <option value="one-time buyers only">One-time buyers only</option>
+                </select>
+              </div>
+            </div>
             <div class="form-block">
-              <label class="field-label">What didn't work last time (optional)</label>
-              <p class="field-hint">Past campaigns, channels, or offers that failed—so AI doesn't repeat them.</p>
-              <textarea name="pastFailures" placeholder="e.g. Discount posts got views but no WhatsApp orders"></textarea>
+              <label class="field-label">What to stop doing</label>
+              <input name="failStop" placeholder="e.g. Generic 20% off posts" />
+            </div>
+            <textarea name="pastFailures" class="hidden" aria-hidden="true"></textarea>
+            <button class="btn-ghost small" id="structureFailuresBtn" type="button">Turn into learning note</button>
             </div>
 
+            <div class="setup-step hidden" data-setup-step="4">
             <p class="form-section-title">Campaign goal</p>
             <div class="form-row">
               <div class="form-block">
@@ -286,28 +378,85 @@
                 </select>
               </div>
             </div>
+            <div class="glass-card goal-intel-card" id="goalIntelCard">
+              <h4>Is this goal realistic?</h4>
+              <p class="muted" id="goalIntelSummary">Fill price and revenue to see the math.</p>
+              <div class="goal-options" id="goalOptions">
+                <label class="goal-option">
+                  <input type="radio" name="goalChoice" value="recommended" checked />
+                  <span><strong id="recommendedGoalLabel">Recommended</strong><small id="recommendedGoalNote"></small></span>
+                </label>
+                <label class="goal-option">
+                  <input type="radio" name="goalChoice" value="stretch" />
+                  <span><strong id="stretchGoalLabel">Your target</strong><small id="stretchGoalNote"></small></span>
+                </label>
+              </div>
+              <p class="field-hint warn hidden" id="goalWarning"></p>
+            </div>
+
             <div class="form-row">
               <div class="form-block">
                 <label class="field-label">Order channel</label>
-                <p class="field-hint">How customers actually pay and confirm orders.</p>
-                <input name="orderChannel" placeholder="e.g. WhatsApp + UPI before delivery" required />
+                <select name="orderChannel" required>
+                  <option value="">Select</option>
+                  <option value="WhatsApp with UPI before delivery">WhatsApp + UPI before delivery</option>
+                  <option value="WhatsApp COD">WhatsApp + cash on delivery</option>
+                  <option value="Instagram DM">Instagram DM</option>
+                  <option value="Website + UPI">Website + UPI</option>
+                </select>
               </div>
               <div class="form-block">
                 <label class="field-label">Delivery area</label>
                 <input name="deliveryArea" placeholder="e.g. Faridabad + Delhi NCR" required />
               </div>
             </div>
+
+            <p class="form-section-title">How much can you do each week?</p>
+            <div class="form-row">
+              <div class="form-block">
+                <label class="field-label">Reels per week</label>
+                <select name="reelsPerWeek" required>
+                  <option value="0">0 — WhatsApp only for now</option>
+                  <option value="1">1</option>
+                  <option value="2" selected>2</option>
+                  <option value="4">4</option>
+                  <option value="6">6</option>
+                </select>
+              </div>
+              <div class="form-block">
+                <label class="field-label">WhatsApp broadcasts?</label>
+                <select name="whatsappBroadcasts" required>
+                  <option value="yes" selected>Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-block">
+                <label class="field-label">Instagram Stories?</label>
+                <select name="storiesPerWeek" required>
+                  <option value="yes">Yes, a few per week</option>
+                  <option value="no" selected>No</option>
+                </select>
+              </div>
+              <div class="form-block">
+                <label class="field-label">Comfortable on camera?</label>
+                <select name="onCamera" required>
+                  <option value="yes">Yes</option>
+                  <option value="no">No — voice/text overlays OK</option>
+                </select>
+              </div>
+            </div>
             <div class="form-block">
-              <label class="field-label">Content capacity</label>
-              <p class="field-hint">Be honest—plans fail when founders can't shoot what AI suggests.</p>
-              <select name="contentCapacity" required>
-                <option value="">Select capacity</option>
-                <option value="2 Reels per week">2 Reels per week</option>
-                <option value="4 Reels per week">4 Reels per week</option>
-                <option value="6 Reels per week">6 Reels per week</option>
-                <option value="1 Reel per week + WhatsApp only">1 Reel per week + WhatsApp only</option>
+              <label class="field-label">Time for marketing per week</label>
+              <select name="hoursPerWeek" required>
+                <option value="1">~1 hour</option>
+                <option value="3" selected>~3 hours</option>
+                <option value="5">~5 hours</option>
+                <option value="8">~8+ hours</option>
               </select>
             </div>
+            <input type="hidden" name="contentCapacity" />
 
             <fieldset class="channel-field">
               <legend><span class="material-symbols-outlined">hub</span> Marketing Channels</legend>
@@ -318,9 +467,13 @@
               <label><input type="checkbox" name="channels" value="Founder LinkedIn" /> LinkedIn</label>
             </fieldset>
 
-            <div class="form-actions">
+            </div>
+
+            <div class="form-actions wizard-actions">
               <button class="btn-ghost" id="loadSample" type="button">Load pickle example</button>
-              <button class="btn-primary" type="submit">Generate growth system</button>
+              <button class="btn-ghost hidden" id="wizardPrev" type="button">Back</button>
+              <button class="btn-secondary" id="wizardNext" type="button">Next</button>
+              <button class="btn-primary hidden" id="openBriefBtn" type="button">Review brief</button>
             </div>
           </form>
 
@@ -424,11 +577,19 @@
 
             <div class="glass-card close-campaign-panel" id="closeCampaignPanel">
               <h4><span class="material-symbols-outlined text-secondary">flag</span> Close Campaign</h4>
-              <p class="muted">Capture learnings so your next plan gets smarter.</p>
-              <label>Best performing hook<textarea name="bestHook" rows="2" placeholder="Which Reel or message got the most replies?"></textarea></label>
-              <label>Top customer objection<textarea name="topObjection" rows="2" placeholder="e.g. Price seems high vs local market"></textarea></label>
-              <label>What to repeat next time<textarea name="repeatNext" rows="2" placeholder="e.g. Founder delivery story in Week 1"></textarea></label>
-              <label>What to stop doing<textarea name="stopDoing" rows="2" placeholder="e.g. Generic discount posts"></textarea></label>
+              <p class="muted">Quick answers — we'll save them for your next plan.</p>
+              <label>Best hook or message<textarea name="bestHook" rows="2" placeholder="Which Reel or WhatsApp got replies?"></textarea></label>
+              <label>Top objection<select name="closeObjection">
+                <option value="">Select</option>
+                <option value="Price feels high">Price feels high</option>
+                <option value="Don't trust new brand">Don't trust new brand</option>
+                <option value="Too oily / unhealthy">Too oily / unhealthy</option>
+                <option value="Delivery hassle">Delivery hassle</option>
+                <option value="Other">Other</option>
+              </select></label>
+              <input type="hidden" name="topObjection" />
+              <label>Repeat next time<textarea name="repeatNext" rows="2" placeholder="e.g. Founder delivery story"></textarea></label>
+              <label>Stop doing<textarea name="stopDoing" rows="2" placeholder="e.g. Generic discount posts"></textarea></label>
               <button class="btn-primary full" type="button" id="closeCampaignBtn">Close campaign &amp; save learnings</button>
               <p class="field-hint" id="closeCampaignStatus"></p>
             </div>
@@ -472,6 +633,89 @@
         </div>
       </section>
     </main>
+
+    <div class="coach-panel hidden" id="coachPanel" role="dialog" aria-modal="true">
+      <div class="experiment-panel-backdrop" data-close-coach></div>
+      <div class="glass-card experiment-panel-card coach-panel-card">
+        <div class="experiment-panel-header">
+          <div>
+            <span class="label text-primary">Your words → Clear version</span>
+            <h3>Does this sound like your customer?</h3>
+          </div>
+          <button class="icon-btn" type="button" data-close-coach aria-label="Close">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div class="coach-compare">
+          <div><span class="label muted">What you said</span><p id="coachFounderText"></p></div>
+          <div><span class="label text-secondary">Clear version</span><p id="coachClearText"></p></div>
+        </div>
+        <div class="coach-panel-actions">
+          <button class="btn-ghost" id="useFounderAudience" type="button">Keep mine</button>
+          <button class="btn-primary" id="useClearAudience" type="button">Use clear version</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="coach-panel hidden" id="discoveryPanel" role="dialog" aria-modal="true">
+      <div class="experiment-panel-backdrop" data-close-discovery></div>
+      <div class="glass-card experiment-panel-card discovery-panel-card">
+        <div class="experiment-panel-header">
+          <div>
+            <span class="label text-tertiary">Discovery Week</span>
+            <h3>Find your customer first</h3>
+          </div>
+          <button class="icon-btn" type="button" data-close-discovery aria-label="Close">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <p id="discoveryIntro" class="muted"></p>
+        <div id="discoveryTasks" class="discovery-tasks"></div>
+        <div class="discovery-interim glass-card">
+          <span class="label">While you discover (not your full campaign yet)</span>
+          <p><strong>WhatsApp:</strong> <span id="discoveryWhatsapp"></span></p>
+          <p><strong>Reel idea:</strong> <span id="discoveryReel"></span></p>
+        </div>
+        <div class="discovery-return hidden" id="discoveryReturn">
+          <p class="form-section-title">What did you learn?</p>
+          <label>Who ordered or replied?<input name="whoFound" id="whoFound" /></label>
+          <label>Which areas?<input name="areasFound" id="areasFound" /></label>
+          <label>What they buy instead<input name="substituteFound" id="substituteFound" /></label>
+          <label>Top hesitation<select id="hesitationFound">
+            <option value="price">Price</option>
+            <option value="trust">Trust</option>
+            <option value="taste">Taste</option>
+            <option value="oily">Too oily</option>
+            <option value="convenience">Convenience</option>
+            <option value="unknown">Don't know brand</option>
+          </select></label>
+          <button class="btn-primary" id="synthesizeDiscoveryBtn" type="button">Build customer summary</button>
+        </div>
+        <div class="coach-panel-actions">
+          <button class="btn-ghost" id="showDiscoveryReturn" type="button">I'm back — here's what I learned</button>
+          <button class="btn-ghost" id="forcePlanBtn" type="button">Build plan anyway (less accurate)</button>
+        </div>
+        <p class="field-hint" id="discoveryStatus"></p>
+      </div>
+    </div>
+
+    <div class="coach-panel hidden" id="briefPanel" role="dialog" aria-modal="true">
+      <div class="experiment-panel-backdrop" data-close-brief></div>
+      <div class="glass-card experiment-panel-card brief-panel-card">
+        <div class="experiment-panel-header">
+          <div>
+            <span class="label text-primary">Final check</span>
+            <h3>Your growth brief</h3>
+          </div>
+          <button class="icon-btn" type="button" data-close-brief aria-label="Close">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div id="briefReview" class="brief-review"></div>
+        <button class="btn-primary full" id="confirmGenerateBtn" type="button">Looks good → Build my 30-day plan</button>
+        <p class="field-hint" id="briefGenerateStatus"></p>
+      </div>
+    </div>
 
     <div class="experiment-panel hidden" id="experimentPanel" role="dialog" aria-modal="true">
       <div class="experiment-panel-backdrop" data-close-experiments></div>
