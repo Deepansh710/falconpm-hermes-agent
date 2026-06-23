@@ -3,15 +3,27 @@ const sampleBrand = {
   category: "Homemade Indian pickles",
   product: "Aam ka Achar",
   price: "399",
+  productBundle: "700g Aam ka Achar non-oily jar",
+  promoHook: "Free next-day delivery in Faridabad",
   offer: "700g Aam ka Achar non-oily jar",
   audience:
     "Working mothers in Faridabad, age 30-40. They like pickles but hesitate because market pickles feel too oily.",
+  whoBuys: "Working mothers in Faridabad",
+  whereLive: "Faridabad",
+  substitute: "Supermarket brands and local home chefs",
+  hesitation: "oily",
+  hesitationLabel: "oily",
+  audienceConfidence: "very_sure",
   currentRevenue: "10000",
   goalAmount: "50000",
   goalDays: "30",
   orderChannel: "WhatsApp with UPI before delivery",
   deliveryArea: "Faridabad",
-  contentCapacity: "4 Reels per week",
+  reelsPerWeek: "2",
+  whatsappBroadcasts: "yes",
+  storiesPerWeek: "no",
+  onCamera: "yes",
+  hoursPerWeek: "3",
   brandTone: "Homemade, nostalgic, playful, trustworthy",
   brandMission:
     "Indian meals have always had a love affair with pickles. We bottle that romance with ghar-ka taste and less oil.",
@@ -32,11 +44,21 @@ const insightCard = document.querySelector("#insightCard");
 const campaignHistoryList = document.querySelector("#campaignHistoryList");
 const experimentPanel = document.querySelector("#experimentPanel");
 const experimentPanelBody = document.querySelector("#experimentPanelBody");
+const coachPanel = document.querySelector("#coachPanel");
+const discoveryPanel = document.querySelector("#discoveryPanel");
+const briefPanel = document.querySelector("#briefPanel");
 
 let currentPlan = null;
 let currentCampaignId = null;
 let campaignHistory = [];
 let activeView = "dashboard";
+let currentSetupStep = 1;
+let discoveryMode = false;
+let discoveryOverride = false;
+let pendingCoachDraft = null;
+let lastTraceTags = { promo: "", hesitation: "" };
+
+const VAGUE_PATTERN = /\b(everyone|all india|anyone|everybody|anybody)\b/i;
 
 function escapeHtml(value = "") {
   return String(value)
@@ -85,57 +107,240 @@ function buildRevenueGoalString(goalAmount, goalDays) {
   return `${formatRupee(amount)} in ${days} days`;
 }
 
+function buildContentCapacity(input) {
+  const parts = [];
+  const reels = input.reelsPerWeek ?? "2";
+  parts.push(`${reels} Reels/week`);
+  if (input.whatsappBroadcasts === "yes") parts.push("WhatsApp broadcasts");
+  if (input.storiesPerWeek === "yes") parts.push("Instagram Stories");
+  if (input.onCamera === "no") parts.push("not on camera");
+  if (input.hoursPerWeek) parts.push(`~${input.hoursPerWeek} hrs/week`);
+  return parts.join(", ");
+}
+
+function getAudienceAnswers() {
+  const data = new FormData(generatorForm);
+  const val = (name, unsureName) => {
+    if (data.get(unsureName) === "on") return "not_sure";
+    return data.get(name)?.toString().trim() || "";
+  };
+  return {
+    whoBuys: val("whoBuys", "whoBuysUnsure"),
+    whereLive: val("whereLive", "whereLiveUnsure"),
+    substitute: val("substitute", "substituteUnsure"),
+    hesitation: data.get("hesitation")?.toString() || "",
+    confidence: data.get("audienceConfidence")?.toString() || "",
+  };
+}
+
+function needsDiscovery(answers) {
+  if (answers.confidence === "not_sure") return true;
+  const fields = [answers.whoBuys, answers.whereLive, answers.substitute, answers.hesitation];
+  const blanks = fields.filter((v) => !v || v === "not_sure").length;
+  if (blanks >= 2) return true;
+  if ([answers.whoBuys, answers.whereLive].some((v) => VAGUE_PATTERN.test(v || ""))) return true;
+  return false;
+}
+
+function computeGoalIntelligence(input) {
+  const current = parseNumber(input.currentRevenue);
+  const stretch = parseNumber(input.goalAmount);
+  const days = parseNumber(input.goalDays) || 30;
+  const price = parseNumber(input.price);
+  const ordersNeeded = price && stretch ? Math.ceil(stretch / price) : 0;
+  const weeks = Math.max(days / 7, 1);
+  const ordersPerWeek = Math.ceil(ordersNeeded / weeks);
+
+  let recommended = stretch;
+  const stage = input.brandStage || "";
+
+  if (stage.includes("Idea") || stage.includes("First sales") || current < 10000) {
+    const floor = Math.max(price * 8, 5000);
+    const cap = current > 0 ? Math.max(current * 2.5, floor) : Math.max(floor, 8000);
+    recommended = Math.min(cap, stretch || cap);
+  } else if (stage.includes("Early traction")) {
+    recommended = Math.min(Math.max(current * 1.35, 15000), stretch || current * 1.35);
+  } else {
+    recommended = Math.min(Math.max(current * 1.25, 20000), stretch || current * 1.25);
+  }
+
+  recommended = Math.round(recommended / 500) * 500;
+  if (!recommended) recommended = Math.min(stretch, 10000);
+
+  const base = Math.max(current, 1000);
+  const ratio = stretch / base;
+  const isAggressive = ratio > 4 || (current < 1000 && stretch > 15000);
+  const isAbsurd = ratio > 15 || (current < 1000 && stretch >= 50000);
+
+  let explanation = `You need about ${ordersNeeded} orders in ${days} days (~${ordersPerWeek}/week) at ${input.price || "your price"}.`;
+  if (isAbsurd) {
+    explanation += " That jump is very large for your current sales — start smaller and prove repeat orders first.";
+  } else if (isAggressive) {
+    explanation += " This is a stretch — we'll phase the plan if you choose it.";
+  }
+
+  return {
+    recommended,
+    stretch,
+    ordersNeeded,
+    ordersPerWeek,
+    isAggressive,
+    isAbsurd,
+    explanation,
+    recommendedGoalString: buildRevenueGoalString(recommended, days),
+  };
+}
+
 function getFormInput() {
   const data = new FormData(generatorForm);
-  const goalAmount = data.get("goalAmount")?.toString().trim() || "";
+  const goalAmount = data.get("goalChoice") === "recommended"
+    ? String(computeGoalIntelligence({
+        currentRevenue: formatRupee(parseNumber(data.get("currentRevenue"))),
+        goalAmount: data.get("goalAmount"),
+        goalDays: data.get("goalDays"),
+        brandStage: data.get("brandStage"),
+        price: formatRupee(parseNumber(data.get("price"))),
+      }).recommended)
+    : data.get("goalAmount")?.toString().trim() || "";
+
   const goalDays = data.get("goalDays")?.toString().trim() || "30";
   const priceRaw = data.get("price")?.toString().trim() || "";
   const revenueRaw = data.get("currentRevenue")?.toString().trim() || "";
+  const productBundle = data.get("productBundle")?.toString().trim() || data.get("offer")?.toString().trim() || "";
+  const promoHook = data.get("promoHook")?.toString().trim() || "";
+  const goalIntel = computeGoalIntelligence({
+    currentRevenue: formatRupee(parseNumber(revenueRaw)),
+    goalAmount: data.get("goalAmount"),
+    goalDays,
+    brandStage: data.get("brandStage")?.toString() || "",
+    price: formatRupee(parseNumber(priceRaw)),
+  });
+
+  const reelsPerWeek = data.get("reelsPerWeek")?.toString() || "2";
+  const whatsappBroadcasts = data.get("whatsappBroadcasts")?.toString() || "yes";
+  const storiesPerWeek = data.get("storiesPerWeek")?.toString() || "no";
+  const onCamera = data.get("onCamera")?.toString() || "yes";
+  const hoursPerWeek = data.get("hoursPerWeek")?.toString() || "3";
+
+  const capacityObj = { reelsPerWeek, whatsappBroadcasts, storiesPerWeek, onCamera, hoursPerWeek };
+  const contentCapacity = buildContentCapacity(capacityObj);
+
+  const audience = data.get("audience")?.toString().trim() || "";
+  const hesitationLabel = data.get("hesitationLabel")?.toString().trim() || data.get("hesitation")?.toString() || "";
+
+  const goalChoice = data.get("goalChoice")?.toString() || "recommended";
 
   return {
     brandName: data.get("brandName")?.toString().trim() || "",
     category: data.get("category")?.toString().trim() || "",
     product: data.get("product")?.toString().trim() || "",
     price: formatRupee(parseNumber(priceRaw)),
-    offer: data.get("offer")?.toString().trim() || "",
-    audience: data.get("audience")?.toString().trim() || "",
+    productBundle,
+    promoHook,
+    offer: productBundle,
+    audience,
+    whoBuys: data.get("whoBuys")?.toString().trim() || "",
+    whereLive: data.get("whereLive")?.toString().trim() || "",
+    substitute: data.get("substitute")?.toString().trim() || "",
+    hesitation: data.get("hesitation")?.toString() || "",
+    hesitationLabel,
+    audienceConfidence: data.get("audienceConfidence")?.toString() || "",
     currentRevenue: formatRupee(parseNumber(revenueRaw)),
     revenueGoal: buildRevenueGoalString(goalAmount, goalDays),
     goalAmount,
     goalDays,
+    goalChoice,
+    recommendedGoal: goalIntel.recommendedGoalString,
+    usePhasedPlan: goalChoice === "stretch" && goalIntel.isAggressive,
     orderChannel: data.get("orderChannel")?.toString().trim() || "",
     deliveryArea: data.get("deliveryArea")?.toString().trim() || "",
-    contentCapacity: data.get("contentCapacity")?.toString().trim() || "",
+    contentCapacity,
+    reelsPerWeek,
+    whatsappBroadcasts,
+    storiesPerWeek,
+    onCamera,
+    hoursPerWeek,
     brandTone: data.get("brandTone")?.toString().trim() || "",
     brandMission: data.get("brandMission")?.toString().trim() || "",
     brandDifferentiation: data.get("brandDifferentiation")?.toString().trim() || "",
     brandStage: data.get("brandStage")?.toString().trim() || "",
     pastFailures: data.get("pastFailures")?.toString().trim() || "",
-    channels: data.getAll("channels").map((channel) => channel.toString()),
+    channels: data.getAll("channels").map((c) => c.toString()),
+    discoveryMode: discoveryMode && !discoveryOverride,
+    discoveryOverride,
   };
 }
 
-function validateFormInput(input) {
+function validateStep(step) {
+  const data = new FormData(generatorForm);
   const errors = [];
-  if (input.audience.length < 20) {
-    errors.push("Audience: describe who, where, and their hesitation (20+ characters).");
+  if (step === 1) {
+    if (!data.get("brandName")?.toString().trim()) errors.push("Brand name is required.");
+    if (!data.get("product")?.toString().trim()) errors.push("Product is required.");
+    if (!parseNumber(data.get("price"))) errors.push("Enter a valid price.");
   }
-  if (input.brandMission.length < 20) {
-    errors.push("Brand story: explain why your brand exists (20+ characters).");
+  if (step === 2) {
+    if (!data.get("audienceConfidence")) errors.push("Tell us how sure you are about your customer.");
+    const answers = getAudienceAnswers();
+    if (needsDiscovery(answers) && !data.get("audience")?.toString().trim() && !discoveryMode) {
+      errors.push("We need a short customer summary — try Discovery Week or click Help me write this clearly.");
+    }
   }
-  if (input.brandDifferentiation.length < 10) {
-    errors.push("Differentiation: say what makes you different (10+ characters).");
+  if (step === 3) {
+    if (!data.get("productBundle")?.toString().trim()) errors.push("Describe what's in the jar/box.");
   }
-  if (!parseNumber(input.goalAmount)) {
-    errors.push("Revenue goal: enter a target amount in rupees.");
+  if (step === 4) {
+    if (!parseNumber(data.get("goalAmount"))) errors.push("Enter a revenue goal.");
+    if (!data.get("orderChannel")) errors.push("Select how customers order.");
+    if (!data.get("deliveryArea")?.toString().trim()) errors.push("Delivery area is required.");
+    if (!data.getAll("channels").length) errors.push("Select at least one channel.");
   }
-  if (!parseNumber(input.price)) {
-    errors.push("Price: enter a valid selling price.");
-  }
-  if (!input.channels.length) {
-    errors.push("Select at least one marketing channel.");
+  if (step === 5) {
+    if ((data.get("brandMission")?.toString().trim() || "").length < 20) {
+      errors.push("Brand mission: 20+ characters.");
+    }
+    if (!data.get("brandStage")) errors.push("Select your brand stage.");
   }
   return errors;
+}
+
+function showSetupStep(step) {
+  currentSetupStep = step;
+  generatorForm.querySelectorAll("[data-setup-step]").forEach((el) => {
+    el.classList.toggle("hidden", Number(el.dataset.setupStep) !== step);
+  });
+  document.querySelectorAll("#setupWizardNav .wizard-step").forEach((btn) => {
+    btn.classList.toggle("active", Number(btn.dataset.step) === step);
+  });
+  document.querySelector("#wizardPrev").classList.toggle("hidden", step === 1);
+  document.querySelector("#wizardNext").classList.toggle("hidden", step === 5);
+  document.querySelector("#openBriefBtn").classList.toggle("hidden", step !== 5);
+  if (step === 4) renderGoalIntelligence();
+  updateDraftState();
+}
+
+function renderGoalIntelligence() {
+  const input = getFormInput();
+  const intel = computeGoalIntelligence(input);
+  const summary = document.querySelector("#goalIntelSummary");
+  const warn = document.querySelector("#goalWarning");
+
+  summary.textContent = intel.explanation;
+  document.querySelector("#recommendedGoalLabel").textContent = `Recommended: ${compactGoal(intel.recommendedGoalString)}`;
+  document.querySelector("#recommendedGoalNote").textContent = "Safer target based on your stage and revenue.";
+  document.querySelector("#stretchGoalLabel").textContent = `Your target: ${compactGoal(buildRevenueGoalString(intel.stretch, input.goalDays))}`;
+  document.querySelector("#stretchGoalNote").textContent = `${intel.ordersNeeded} orders (~${intel.ordersPerWeek}/week).`;
+
+  warn.classList.toggle("hidden", !intel.isAggressive);
+  if (intel.isAbsurd) {
+    warn.textContent =
+      "This goal is a big jump from where you are. We strongly recommend starting with the recommended goal.";
+  } else if (intel.isAggressive) {
+    warn.textContent = "Stretch goal selected — your plan will split Phase 1 (prove it) and Phase 2 (scale).";
+  }
+
+  const capField = generatorForm.elements.namedItem("contentCapacity");
+  if (capField) capField.value = input.contentCapacity;
 }
 
 function applyInputToForm(input) {
@@ -143,11 +348,23 @@ function applyInputToForm(input) {
     brandName: input.brandName,
     category: input.category,
     product: input.product,
-    offer: input.offer,
+    productBundle: input.productBundle || input.offer,
+    promoHook: input.promoHook || "",
+    offer: input.productBundle || input.offer,
     audience: input.audience,
+    whoBuys: input.whoBuys,
+    whereLive: input.whereLive,
+    substitute: input.substitute,
+    hesitation: input.hesitation,
+    hesitationLabel: input.hesitationLabel,
+    audienceConfidence: input.audienceConfidence,
     orderChannel: input.orderChannel,
     deliveryArea: input.deliveryArea,
-    contentCapacity: input.contentCapacity,
+    reelsPerWeek: input.reelsPerWeek || "2",
+    whatsappBroadcasts: input.whatsappBroadcasts || "yes",
+    storiesPerWeek: input.storiesPerWeek || "no",
+    onCamera: input.onCamera || "yes",
+    hoursPerWeek: input.hoursPerWeek || "3",
     brandTone: input.brandTone,
     brandMission: input.brandMission,
     brandDifferentiation: input.brandDifferentiation,
@@ -162,24 +379,29 @@ function applyInputToForm(input) {
   }
 
   const priceField = generatorForm.elements.namedItem("price");
-  if (priceField) priceField.value = String(parseNumber(input.price) || input.goalAmount || "");
+  if (priceField) priceField.value = String(parseNumber(input.price) || "");
 
   const revenueField = generatorForm.elements.namedItem("currentRevenue");
   if (revenueField) revenueField.value = String(parseNumber(input.currentRevenue) || "");
 
   const goalField = generatorForm.elements.namedItem("goalAmount");
-  if (goalField) {
-    goalField.value = String(parseNumber(input.goalAmount) || parseNumber(input.revenueGoal) || "");
-  }
+  if (goalField) goalField.value = String(parseNumber(input.goalAmount) || parseNumber(input.revenueGoal) || "");
 
   const channels = input.channels || [];
   generatorForm.querySelectorAll('input[name="channels"]').forEach((checkbox) => {
     checkbox.checked = channels.includes(checkbox.value);
   });
+
+  discoveryMode = Boolean(input.discoveryMode);
+  discoveryOverride = Boolean(input.discoveryOverride);
 }
 
 function getTrackerData() {
   const data = new FormData(trackerForm);
+  const objectionSelect = data.get("closeObjection")?.toString() || "";
+  const topField = trackerForm.elements.namedItem("topObjection");
+  if (topField && objectionSelect) topField.value = objectionSelect;
+
   return {
     views: Number(data.get("views")) || 0,
     saves: Number(data.get("saves")) || 0,
@@ -195,19 +417,148 @@ function getCloseLearnings() {
   const data = new FormData(trackerForm);
   return {
     bestHook: data.get("bestHook")?.toString().trim() || "",
-    topObjection: data.get("topObjection")?.toString().trim() || "",
+    topObjection: data.get("closeObjection")?.toString() || data.get("topObjection")?.toString().trim() || "",
     repeat: data.get("repeatNext")?.toString().trim() || "",
     stop: data.get("stopDoing")?.toString().trim() || "",
   };
+}
+
+async function callCoach(action, payload) {
+  const response = await fetch("/api/coach", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Coach request failed");
+  return data.result;
+}
+
+async function runAudienceCoach() {
+  const input = getFormInput();
+  const answers = getAudienceAnswers();
+  const status = document.querySelector("#audienceCoachStatus");
+  status.textContent = "Writing a clear version…";
+
+  try {
+    if (needsDiscovery(answers)) {
+      await openDiscoveryWeek();
+      status.textContent = "Discovery Week opened — do the checklist first.";
+      return;
+    }
+
+    const result = await callCoach("audience_draft", { input, answers });
+    pendingCoachDraft = result;
+    document.querySelector("#coachFounderText").textContent = result.founderSummary || "";
+    document.querySelector("#coachClearText").textContent = result.clearVersion || "";
+    coachPanel.classList.remove("hidden");
+    status.textContent = "Review the clear version below.";
+  } catch (error) {
+    status.textContent = error.message;
+  }
+}
+
+async function openDiscoveryWeek() {
+  const input = getFormInput();
+  discoveryMode = true;
+  localStorage.setItem(`sa_discovery_${input.brandName}`, JSON.stringify({ discoveryMode: true }));
+  document.querySelector("#discoveryStatus").textContent = "Building your 1-week checklist…";
+
+  try {
+    const result = await callCoach("discovery_week", { input });
+    document.querySelector("#discoveryIntro").textContent = result.intro || "";
+    document.querySelector("#discoveryTasks").innerHTML = (result.tasks || [])
+      .map(
+        (t) => `
+        <article class="discovery-task">
+          <strong>${escapeHtml(t.day)}: ${escapeHtml(t.title)}</strong>
+          <p>${escapeHtml(t.action)}</p>
+          <pre class="script-block">${escapeHtml(t.script || "")}</pre>
+          <span class="label muted">Note: ${escapeHtml(t.noteWhatToWrite || "")}</span>
+        </article>
+      `,
+      )
+      .join("");
+    document.querySelector("#discoveryWhatsapp").textContent = result.interimWhatsapp || "";
+    document.querySelector("#discoveryReel").textContent = result.interimReelIdea || "";
+    discoveryPanel.classList.remove("hidden");
+    document.querySelector("#discoveryStatus").textContent = "";
+  } catch (error) {
+    document.querySelector("#discoveryStatus").textContent = error.message;
+  }
+}
+
+async function synthesizeDiscovery() {
+  const input = getFormInput();
+  const findings = {
+    whoFound: document.querySelector("#whoFound").value,
+    areasFound: document.querySelector("#areasFound").value,
+    substituteFound: document.querySelector("#substituteFound").value,
+    hesitationFound: document.querySelector("#hesitationFound").value,
+  };
+  const status = document.querySelector("#discoveryStatus");
+  status.textContent = "Turning your notes into a customer summary…";
+
+  try {
+    const result = await callCoach("discovery_synthesize", { input, findings });
+    generatorForm.elements.namedItem("audience").value = result.audience || "";
+    generatorForm.elements.namedItem("hesitationLabel").value = result.hesitationLabel || "";
+    discoveryMode = false;
+    discoveryOverride = false;
+    localStorage.removeItem(`sa_discovery_${input.brandName}`);
+    discoveryPanel.classList.add("hidden");
+    status.textContent = result.confidenceNote || "Customer summary saved.";
+    document.querySelector("#audienceCoachStatus").textContent =
+      "Nice — you talked to real people. That's real data.";
+    showSetupStep(3);
+  } catch (error) {
+    status.textContent = error.message;
+  }
+}
+
+async function structureFailures() {
+  const input = getFormInput();
+  const data = new FormData(generatorForm);
+  const checklist = {
+    channel: data.get("failChannel")?.toString() || "",
+    contentType: data.get("failOutcome")?.toString() || "",
+    outcome: data.get("failOutcome")?.toString() || "",
+    stopDoing: data.get("failStop")?.toString() || "",
+  };
+  if (!checklist.channel && !checklist.outcome) return;
+
+  try {
+    const result = await callCoach("failure_debrief", { input, checklist });
+    generatorForm.elements.namedItem("pastFailures").value = result.pastFailures || "";
+  } catch {
+    generatorForm.elements.namedItem("pastFailures").value = [
+      checklist.channel && `Tried ${checklist.channel}`,
+      checklist.outcome && `Result: ${checklist.outcome}`,
+      checklist.stopDoing && `Stop: ${checklist.stopDoing}`,
+    ]
+      .filter(Boolean)
+      .join(". ");
+  }
+}
+
+function renderBriefReview() {
+  const input = getFormInput();
+  const intel = computeGoalIntelligence(input);
+  document.querySelector("#briefReview").innerHTML = `
+    <div class="brief-review-block"><span class="label">Customer</span><p>${escapeHtml(input.audience || "—")}</p></div>
+    <div class="brief-review-block"><span class="label">Product</span><p>${escapeHtml(input.productBundle)}</p></div>
+    <div class="brief-review-block"><span class="label">Promo hook</span><p>${escapeHtml(input.promoHook || "None")}</p></div>
+    <div class="brief-review-block"><span class="label">Goal</span><p>${escapeHtml(input.revenueGoal)} ${input.goalChoice === "stretch" && intel.isAggressive ? "(phased plan)" : ""}</p></div>
+    <div class="brief-review-block"><span class="label">Capacity</span><p>${escapeHtml(input.contentCapacity)}</p></div>
+    <div class="brief-review-block"><span class="label">Channels</span><p>${escapeHtml(input.channels.join(", "))}</p></div>
+  `;
 }
 
 function renderSparkBars(containerId, values, variant = "") {
   const container = document.querySelector(containerId);
   if (!container) return;
   container.className = `spark-bars${variant ? ` ${variant}` : ""}`;
-  container.innerHTML = values
-    .map((height) => `<span style="height:${height}%"></span>`)
-    .join("");
+  container.innerHTML = values.map((height) => `<span style="height:${height}%"></span>`).join("");
 }
 
 function setRingProgress(percent) {
@@ -226,25 +577,25 @@ function switchView(view) {
   document.querySelectorAll(".nav-link[data-view]").forEach((link) => {
     link.classList.toggle("active", link.dataset.view === view);
   });
-  if (view === "campaign") {
-    void loadCampaignHistory();
-  }
+  if (view === "campaign") void loadCampaignHistory();
 }
 
 function statusBadge(status) {
   const normalized = (status || "live").toLowerCase();
   const cls =
-    normalized === "closed" ? "status-closed" : normalized === "draft" ? "status-draft" : "status-live";
+    normalized === "closed"
+      ? "status-closed"
+      : normalized === "paused"
+        ? "status-paused"
+        : normalized === "draft"
+          ? "status-draft"
+          : "status-live";
   return `<span class="history-status ${cls}">${escapeHtml(normalized)}</span>`;
 }
 
 function formatHistoryDate(iso) {
   if (!iso) return "";
-  return new Date(iso).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
 async function loadCampaignHistory() {
@@ -264,6 +615,7 @@ async function loadCampaignHistory() {
 
     if (!campaignHistory.length) {
       campaignHistoryList.innerHTML = `<p class="muted">No saved campaigns yet. Generate your first plan to start history.</p>`;
+      updateCampaignHeader();
       return;
     }
 
@@ -279,14 +631,39 @@ async function loadCampaignHistory() {
             <div class="history-row-actions">
               ${statusBadge(row.status)}
               <button class="btn-ghost small" type="button" data-load-campaign="${escapeHtml(row.id)}">Load</button>
-              <button class="btn-ghost small" type="button" data-duplicate-campaign="${escapeHtml(row.id)}">Duplicate</button>
+              <button class="btn-ghost small" type="button" data-run-again="${escapeHtml(row.id)}">Run again</button>
+              ${row.status === "live" ? `<button class="btn-ghost small" type="button" data-stop-campaign="${escapeHtml(row.id)}">Stop</button>` : ""}
+              <button class="btn-ghost small danger" type="button" data-delete-campaign="${escapeHtml(row.id)}">Delete</button>
             </div>
           </article>
         `,
       )
       .join("");
+
+    updateCampaignHeader();
   } catch (error) {
     campaignHistoryList.innerHTML = `<p class="muted">Could not load history: ${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function updateCampaignHeader() {
+  const input = getFormInput();
+  const active = campaignHistory.find((c) => c.id === currentCampaignId);
+  const liveForBrand = campaignHistory.find(
+    (c) => c.brand_name === input.brandName && c.status === "live",
+  );
+
+  if (currentPlan && currentCampaignId) {
+    document.querySelector("#campaignProductName").textContent = `${input.product || active?.product} campaign`;
+    document.querySelector("#campaignSummary").textContent =
+      currentPlan.summary?.positioning || `Active campaign for ${input.brandName}.`;
+  } else if (liveForBrand) {
+    document.querySelector("#campaignProductName").textContent = `${liveForBrand.product} (load from history)`;
+    document.querySelector("#campaignSummary").textContent = "Click Load on your live campaign to continue.";
+  } else if (!currentPlan) {
+    document.querySelector("#campaignProductName").textContent = "No active campaign";
+    document.querySelector("#campaignSummary").textContent =
+      "Complete Brand Setup and build your brief to unlock the command center.";
   }
 }
 
@@ -311,6 +688,7 @@ function loadCampaignFromHistory(id, { duplicate = false } = {}) {
     currentCampaignId = null;
     renderEmptyPlan();
     updateDraftState();
+    showSetupStep(1);
     switchView("setup");
     return;
   }
@@ -322,7 +700,7 @@ function loadCampaignFromHistory(id, { duplicate = false } = {}) {
   }
 
   currentCampaignId = row.id;
-  renderPlan(plan, getFormInput());
+  renderPlan(plan, { ...getFormInput(), ...input });
 
   const metrics = row.metrics?.tracker;
   if (metrics) {
@@ -334,12 +712,9 @@ function loadCampaignFromHistory(id, { duplicate = false } = {}) {
 
   const learnings = row.metrics?.learnings;
   if (learnings) {
-    const map = {
-      bestHook: learnings.bestHook,
-      topObjection: learnings.topObjection,
-      repeatNext: learnings.repeat,
-      stopDoing: learnings.stop,
-    };
+    const objectionField = trackerForm.elements.namedItem("closeObjection");
+    if (objectionField && learnings.topObjection) objectionField.value = learnings.topObjection;
+    const map = { bestHook: learnings.bestHook, repeatNext: learnings.repeat, stopDoing: learnings.stop };
     for (const [key, value] of Object.entries(map)) {
       const field = trackerForm.elements.namedItem(key);
       if (field && value) field.value = value;
@@ -350,13 +725,42 @@ function loadCampaignFromHistory(id, { duplicate = false } = {}) {
   updateDraftState();
 }
 
+async function stopCampaign(id) {
+  const response = await fetch("/api/campaigns", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id, status: "paused" }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Failed to stop campaign");
+  if (currentCampaignId === id) currentCampaignId = null;
+  await loadCampaignHistory();
+}
+
+async function deleteCampaign(id) {
+  if (!confirm("Delete this campaign from history?")) return;
+  const response = await fetch(`/api/campaigns?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Failed to delete");
+  if (currentCampaignId === id) {
+    currentCampaignId = null;
+    currentPlan = null;
+    renderEmptyPlan();
+  }
+  await loadCampaignHistory();
+  updateDraftState();
+}
+
 function updateDraftState() {
   const input = getFormInput();
   const tracker = getTrackerData();
   const goal = numberFromCurrency(input.revenueGoal);
   const units = unitTarget(input.revenueGoal, input.price);
   const progress = goal ? Math.min(100, Math.round((tracker.revenue / goal) * 100)) : 0;
-  const primaryChannel = input.channels[0]?.replace(" campaign", "") || "--";
+  const intel = computeGoalIntelligence(input);
+  const primaryChannel = input.channels.includes("WhatsApp campaign")
+    ? "WhatsApp"
+    : input.channels[0]?.replace(" campaign", "") || "--";
   const isClosed = campaignHistory.find((c) => c.id === currentCampaignId)?.status === "closed";
 
   document.querySelector("#topBrandName").textContent = input.brandName || "No brand selected";
@@ -364,39 +768,36 @@ function updateDraftState() {
     ? `Current Goal: ${compactGoal(input.revenueGoal)}`
     : "Current Goal: --";
   document.querySelector("#sideGoalValue").textContent = compactGoal(input.revenueGoal);
-  document.querySelector("#sideGoalBar").style.width = `${currentPlan ? Math.max(8, progress) : 0}%`;
-  document.querySelector("#sideGoalTip").textContent = currentPlan
-    ? `AI Insights: ${input.channels.includes("WhatsApp campaign") ? "WhatsApp" : "Primary channel"} shows strongest conversion potential for ${input.product || "this product"}.`
-    : "Complete setup to see AI probability insights.";
 
-  document.querySelector("#briefTitle").textContent = input.product
-    ? `${input.product} growth brief`
-    : "Waiting for inputs";
-  document.querySelector("#briefCopy").textContent = input.product
-    ? `${input.brandName || "This brand"} wants to grow ${input.product} using ${input.channels.join(", ") || "selected channels"}.`
-    : "Add a product and revenue goal. The command center unlocks after AI generation.";
+  const tipParts = [];
+  if (intel.isAbsurd) tipParts.push(`₹${parseNumber(input.goalAmount).toLocaleString("en-IN")} is a big jump — recommended ${compactGoal(intel.recommendedGoalString)}.`);
+  else if (intel.ordersPerWeek) tipParts.push(`Need ~${intel.ordersPerWeek} orders/week.`);
+  if (input.promoHook) tipParts.push(`Promo: ${input.promoHook.slice(0, 40)}…`);
+  document.querySelector("#sideGoalTip").textContent = tipParts.length
+    ? tipParts.join(" ")
+    : "Complete setup to see goal math.";
+
+  document.querySelector("#briefTitle").textContent = input.product ? `${input.product} growth brief` : "Waiting for inputs";
+  document.querySelector("#briefCopy").textContent = input.audience
+    ? `Customer: ${input.audience.slice(0, 120)}${input.audience.length > 120 ? "…" : ""}`
+    : "Step through the wizard — we help you think before we plan.";
 
   document.querySelector("#briefStack").innerHTML = [
     ["Goal", input.revenueGoal],
+    ["Promo", input.promoHook || "—"],
+    ["Hesitation", input.hesitationLabel || "—"],
+    ["Capacity", input.contentCapacity],
     ["Stage", input.brandStage],
-    ["Differentiation", input.brandDifferentiation],
-    ["Audience", input.audience],
-    ["Order flow", input.orderChannel],
   ]
-    .filter(([, value]) => value)
+    .filter(([, value]) => value && value !== "—")
     .map(
       ([label, value]) => `
-        <div>
-          <span>${escapeHtml(label)}</span>
-          <strong>${escapeHtml(value)}</strong>
-        </div>
+        <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
       `,
     )
     .join("");
 
-  document.querySelector("#dashboardGoalLabel").textContent = units
-    ? `Goal: ${units} units`
-    : "Goal: add setup";
+  document.querySelector("#dashboardGoalLabel").textContent = units ? `Goal: ${units} units` : "Goal: add setup";
   document.querySelector("#dashboardRevenueLabel").textContent = `Target revenue: ${compactGoal(input.revenueGoal)}`;
   document.querySelector("#dashboardUnits").textContent = String(units || 0);
   setRingProgress(progress);
@@ -404,68 +805,38 @@ function updateDraftState() {
   document.querySelector("#metricViews").textContent = tracker.views.toLocaleString("en-IN");
   document.querySelector("#metricInquiries").textContent = tracker.inquiries.toLocaleString("en-IN");
   document.querySelector("#metricOrders").textContent = tracker.orders.toLocaleString("en-IN");
-  document.querySelector("#metricViewsDelta").textContent = tracker.views ? "+12%" : "--";
-  document.querySelector("#metricInquiriesDelta").textContent = tracker.inquiries ? "+8%" : "--";
-  document.querySelector("#metricOrdersDelta").textContent = tracker.orders ? "+2%" : "--";
-
-  renderSparkBars("#sparkViews", [30, 45, 60, 85]);
-  renderSparkBars("#sparkInquiries", [20, 55, 40, 75], "tertiary");
-  renderSparkBars("#sparkOrders", [40, 35, 50, 90], "secondary");
 
   document.querySelector("#dashboardProductName").textContent = currentPlan
     ? `${input.product} campaign`
     : input.product || "No active campaign";
   document.querySelector("#dashboardPositioning").textContent =
     currentPlan?.summary?.positioning ||
-    (input.product
-      ? `Configure and generate a 30-day plan for ${input.product}.`
-      : "Configure brand setup and generate a plan.");
-  document.querySelector("#dashboardLiveBadge").textContent = isClosed
-    ? "Closed"
-    : currentPlan
-      ? "Active Campaign"
-      : "Draft";
+    (input.product ? `Configure and generate a 30-day plan for ${input.product}.` : "Configure brand setup and generate a plan.");
+  document.querySelector("#dashboardLiveBadge").textContent = isClosed ? "Closed" : currentPlan ? "Active Campaign" : "Draft";
   document.querySelector("#dashboardStatusPill").textContent = isClosed ? "CLOSED" : currentPlan ? "LIVE" : "SETUP";
   document.querySelector("#dashStatGoal").textContent = compactGoal(input.revenueGoal);
   document.querySelector("#dashStatChannel").textContent = primaryChannel;
   document.querySelector("#dashStatRevenue").textContent = `₹${tracker.revenue.toLocaleString("en-IN")}`;
   document.querySelector("#dashStatProgress").textContent = `${progress}%`;
 
-  document.querySelector("#chartGoalLabel").textContent = goal
-    ? `Gap analysis against target: ${compactGoal(input.revenueGoal)}`
-    : "Gap analysis against target";
+  document.querySelector("#sideGoalBar").style.width = `${currentPlan ? Math.max(8, progress) : 0}%`;
 
-  if (!currentPlan) {
-    document.querySelector("#campaignProductName").textContent = "No active campaign";
-    document.querySelector("#campaignSummary").textContent =
-      "Generate a plan to see diagnosis, weekly sprints, and next actions.";
-    document.querySelector("#campaignProjection").textContent = "AI Projection: pending";
-    document.querySelector("#contentStudioTitle").textContent = "Content Studio";
-    document.querySelector("#contentAiBadge").textContent = "AI Content pending";
-    document.querySelector("#contentUpdated").textContent = "Generate a plan first";
-    document.querySelector("#insightTitle").textContent = "Start with Brand Setup";
-    document.querySelector("#insightBody").textContent =
-      "Enter your product, audience, and revenue goal. superattention.ai will build a 30-day growth command center—not a document dump.";
-  }
-
+  if (!currentPlan) updateCampaignHeader();
   updateInsights();
 }
 
 function fillSample() {
-  applyInputToForm({
-    ...sampleBrand,
-    price: sampleBrand.price,
-    currentRevenue: sampleBrand.currentRevenue,
-    goalAmount: sampleBrand.goalAmount,
-  });
-
+  applyInputToForm(sampleBrand);
   generatorForm.querySelectorAll('input[name="channels"]').forEach((checkbox) => {
     checkbox.checked = sampleBrand.channels.includes(checkbox.value);
   });
-
+  generatorForm.elements.namedItem("audience").value = sampleBrand.audience;
+  generatorForm.elements.namedItem("hesitationLabel").value = sampleBrand.hesitationLabel;
   currentPlan = null;
   currentCampaignId = null;
+  discoveryMode = false;
   renderEmptyPlan();
+  showSetupStep(1);
   updateDraftState();
   switchView("setup");
 }
@@ -475,22 +846,7 @@ function normalizePlan(payload) {
     try {
       return JSON.parse(payload);
     } catch {
-      return {
-        summary: {
-          positioning: "Generated text plan",
-          primaryGoal: "",
-          unitTarget: "",
-          coreInsight: payload.slice(0, 240),
-          primaryChannel: "",
-          risk: "AI returned unstructured text.",
-        },
-        diagnosis: [],
-        weeklyPlan: [],
-        contentAssets: {},
-        metrics: [],
-        nextActions: [],
-        rawText: payload,
-      };
+      return { summary: {}, diagnosis: [], weeklyPlan: [], contentAssets: {}, metrics: [], nextActions: [] };
     }
   }
   return payload || {};
@@ -501,10 +857,9 @@ function renderEmptyPlan() {
   commandCenter.innerHTML = `
     <span class="material-symbols-outlined empty-icon">campaign</span>
     <h3>No plan generated yet</h3>
-    <p>Complete Brand Setup and click Generate growth system to unlock your 30-day roadmap.</p>
+    <p>Complete Brand Setup → Review brief → Build your 30-day roadmap.</p>
     <button class="btn-primary" data-view="setup" type="button">Go to Brand Setup</button>
   `;
-
   contentBento.innerHTML = `
     <div class="glass-card empty-studio">
       <span class="material-symbols-outlined empty-icon">movie_edit</span>
@@ -514,15 +869,24 @@ function renderEmptyPlan() {
   `;
 }
 
+function assetTags(input) {
+  const tags = [];
+  if (input.promoHook) tags.push(`Uses offer: ${input.promoHook}`);
+  if (input.hesitationLabel) tags.push(`Targets: ${input.hesitationLabel} hesitation`);
+  lastTraceTags = { promo: input.promoHook, hesitation: input.hesitationLabel };
+  return tags.map((t) => `<span class="asset-tag">${escapeHtml(t)}</span>`).join("");
+}
+
 function renderPlan(plan, input) {
   currentPlan = normalizePlan(plan);
   const summary = currentPlan.summary || {};
 
   document.querySelector("#campaignProductName").textContent = `${input.product} campaign`;
   document.querySelector("#campaignSummary").textContent =
-    summary.positioning ||
-    `A 30-day plan to grow ${input.product} through ${input.channels.join(", ")}.`;
-  document.querySelector("#campaignProjection").textContent = "AI Projection: on track";
+    summary.positioning || `A 30-day plan to grow ${input.product} through ${input.channels.join(", ")}.`;
+  document.querySelector("#campaignProjection").textContent = input.usePhasedPlan
+    ? "AI Projection: phased plan (prove → scale)"
+    : "AI Projection: on track";
   document.querySelector("#contentStudioTitle").textContent = `${input.product} Campaign`;
   document.querySelector("#contentAiBadge").textContent = "AI Content Generation Active";
   document.querySelector("#contentUpdated").textContent = "Just generated";
@@ -561,13 +925,9 @@ function openExperimentPanel(weekIndex) {
   const weeks = currentPlan?.weeklyPlan || [];
   const week = weeks[weekIndex];
   if (!week) return;
-
   document.querySelector("#experimentPanelWeek").textContent = week.week || `Week ${weekIndex + 1}`;
   document.querySelector("#experimentPanelTheme").textContent = week.theme || "Experiments";
-  experimentPanelBody.innerHTML = (week.experiments || [])
-    .map((exp) => renderExperimentDetail(exp))
-    .join("");
-
+  experimentPanelBody.innerHTML = (week.experiments || []).map((exp) => renderExperimentDetail(exp)).join("");
   experimentPanel.classList.remove("hidden");
 }
 
@@ -581,169 +941,83 @@ function renderCommandCenter(plan, input) {
   const weeks = plan.weeklyPlan || [];
   const nextActions = plan.nextActions || [];
 
-  const milestones = [
-    { day: "DAY 01", title: "Campaign Launch", tone: "primary" },
-    { day: "DAY 07", title: "Engagement Peak", tone: "secondary" },
-    { day: "DAY 15", title: "Scaling Phase", tone: "tertiary" },
-    { day: "DAY 22", title: "Urgency Trigger", tone: "muted" },
-    { day: "DAY 30", title: "Final Audit", tone: "muted" },
-  ];
-
   commandCenter.className = "campaign-console";
   commandCenter.innerHTML = `
     <div class="glass-card timeline-card">
       <div class="timeline-header">
         <h4>Strategic Milestones</h4>
-        <div class="phase-chips">
-          <span class="phase-chip build">Phase 1: Build</span>
-          <span class="phase-chip scale">Phase 2: Scale</span>
-        </div>
-      </div>
-      <div class="timeline-track">
-        <div class="timeline-progress"></div>
-        <div class="timeline-points">
-          ${milestones
-            .map(
-              (m) => `
-                <div class="timeline-point ${m.tone}">
-                  <div class="dot"></div>
-                  <span class="day">${m.day}</span>
-                  <span class="title">${m.title}</span>
-                </div>
-              `,
-            )
-            .join("")}
-        </div>
+        ${input.usePhasedPlan ? '<span class="phase-chip build">Phased: prove then scale</span>' : ""}
       </div>
     </div>
-
     <h4 class="section-label">Weekly Execution Modules</h4>
-    <div class="week-grid">
-      ${weeks.map((week, index) => renderWeekModule(week, index)).join("")}
-    </div>
-
+    <div class="week-grid">${weeks.map((week, index) => renderWeekModule(week, index)).join("")}</div>
     <section class="plan-brief">
-      <article><span>Positioning</span><strong>${escapeHtml(summary.positioning || "Positioning pending")}</strong></article>
+      <article><span>Positioning</span><strong>${escapeHtml(summary.positioning || "")}</strong></article>
       <article><span>Target</span><strong>${escapeHtml(summary.primaryGoal || input.revenueGoal)}</strong></article>
       <article><span>Unit math</span><strong>${escapeHtml(summary.unitTarget || `${unitTarget(input.revenueGoal, input.price)} units`)}</strong></article>
-      <article><span>Risk</span><strong>${escapeHtml(summary.risk || "Track conversion, not just reach.")}</strong></article>
+      <article><span>Risk</span><strong>${escapeHtml(summary.risk || "")}</strong></article>
     </section>
-
     <section class="diagnosis-grid">
       ${diagnosis
         .slice(0, 3)
         .map(
           (item) => `
-            <article>
-              <span>${escapeHtml(item.label || "Diagnosis")}</span>
-              <p>${escapeHtml(item.detail || "")}</p>
-            </article>
+            <article><span>${escapeHtml(item.label || "")}</span><p>${escapeHtml(item.detail || "")}</p></article>
           `,
         )
         .join("")}
     </section>
-
     <section class="next-actions-block glass-card">
-      <div>
-        <span class="label text-primary">Next 7 days</span>
-        <h3>Do these first</h3>
-      </div>
-      <ol>
-        ${nextActions.map((action) => `<li>${escapeHtml(action)}</li>`).join("")}
-      </ol>
+      <div><span class="label text-primary">Next 7 days</span><h3>Do these first</h3></div>
+      <ol>${nextActions.map((action) => `<li>${escapeHtml(action)}</li>`).join("")}</ol>
     </section>
   `;
 }
 
 function renderWeekModule(week, index) {
   const experiments = week.experiments || [];
-  const colors = ["primary", "tertiary", "secondary", "primary"];
-  const color = colors[index % colors.length];
   const tasks = experiments.slice(0, 2).map((exp) => exp.title || exp.action || "Experiment");
-
   return `
     <article class="glass-card week-module">
-      <span class="week-num">${String(index + 1).padStart(2, "0")}</span>
       <span class="week-badge">${escapeHtml(week.week || `Week ${index + 1}`)}</span>
       <h5>${escapeHtml(week.theme || "Growth sprint")}</h5>
-      <p class="theme">Theme: <em>${escapeHtml(week.objective || week.target || "")}</em></p>
-      <div class="week-target">
-        <span>Target focus</span>
-        <strong>${escapeHtml(week.target || "Grow demand")}</strong>
-      </div>
-      <ul class="week-tasks">
-        ${tasks
-          .map(
-            (task) => `
-              <li>
-                <span class="material-symbols-outlined" style="font-size:18px;color:var(--${color});font-variation-settings:'FILL' 1">check_circle</span>
-                ${escapeHtml(task)}
-              </li>
-            `,
-          )
-          .join("")}
-      </ul>
+      <ul class="week-tasks">${tasks.map((task) => `<li>${escapeHtml(task)}</li>`).join("")}</ul>
       <button class="week-action" type="button" data-week-index="${index}">View experiments</button>
     </article>
   `;
 }
 
 function renderContentStudio(contentAssets, input) {
+  const tags = assetTags(input);
   const reels = contentAssets.reels || [];
   const whatsapp = contentAssets.whatsapp || [];
-  const website = contentAssets.website || [];
-  const linkedin = contentAssets.linkedin || [];
 
-  if (!reels.length && !whatsapp.length && !website.length && !linkedin.length) {
-    contentBento.innerHTML = `
-      <div class="glass-card empty-studio">
-        <span class="material-symbols-outlined empty-icon">movie_edit</span>
-        <h3>No assets returned</h3>
-        <p>Try regenerating with at least one content channel selected.</p>
-      </div>
-    `;
+  if (!reels.length && !whatsapp.length) {
+    contentBento.innerHTML = `<div class="glass-card empty-studio"><h3>No assets returned</h3></div>`;
     return;
   }
 
   contentBento.innerHTML = `
-    ${reels.length ? renderReelsCard(reels) : ""}
-    ${whatsapp.length ? renderWhatsappCard(whatsapp) : ""}
-    ${website.length ? renderWebsiteCard(website, input) : ""}
-    ${linkedin.length ? renderLinkedinCard(linkedin) : ""}
-    <div class="glass-card content-card forecast">
-      <h5 class="label muted">Growth Forecast</h5>
-      <div class="forecast-bars">
-        <div class="forecast-row">
-          <div class="forecast-row-head"><span>Expected reach</span><strong class="mono-data text-secondary">High</strong></div>
-          <div class="bar"><div style="width:75%;background:var(--secondary)"></div></div>
-        </div>
-        <div class="forecast-row">
-          <div class="forecast-row-head"><span>Content synergy</span><strong class="mono-data text-primary">Strong</strong></div>
-          <div class="bar"><div style="width:92%;background:var(--primary)"></div></div>
-        </div>
-      </div>
-    </div>
-    <div class="glass-card tip-card forecast">
-      <h5><span class="material-symbols-outlined">lightbulb</span> AI Content Tip</h5>
-      <p>Founder-led and nostalgia hooks usually outperform direct sales posts for food brands. Lead with emotion, close with a clear WhatsApp CTA.</p>
-    </div>
+    ${tags ? `<div class="asset-tags-row">${tags}</div>` : ""}
+    ${reels.length ? renderReelsCard(reels, tags) : ""}
+    ${whatsapp.length ? renderWhatsappCard(whatsapp, tags) : ""}
+    ${(contentAssets.website || []).length ? renderWebsiteCard(contentAssets.website, input) : ""}
+    ${(contentAssets.linkedin || []).length ? renderLinkedinCard(contentAssets.linkedin) : ""}
   `;
 }
 
-function renderReelsCard(reels) {
+function renderReelsCard(reels, tags) {
   return `
     <div class="glass-card content-card reels">
-      <div class="content-card-header">
-        <h4><span class="material-symbols-outlined text-primary">video_library</span> Reel Hooks</h4>
-        <span class="growth-chip">+42% Avg. Engagement</span>
-      </div>
+      <div class="content-card-header"><h4>Reel Hooks</h4></div>
+      ${tags ? `<div class="asset-tags-inline">${tags}</div>` : ""}
       ${reels
         .slice(0, 2)
         .map(
           (asset) => `
             <div class="hook-item">
-              <p>"${escapeHtml(asset.hook || asset.script || asset.title || "")}"</p>
-              <span class="label muted">${escapeHtml(asset.title || "Hook")}</span>
+              <p>"${escapeHtml(asset.hook || asset.script || "")}"</p>
+              <span class="label muted">CTA: ${escapeHtml(asset.cta || "")}</span>
               <button class="copy-icon-btn" data-copy-text="${escapeHtml(asset.hook || asset.script || "")}" type="button">
                 <span class="material-symbols-outlined">content_copy</span>
               </button>
@@ -755,88 +1029,56 @@ function renderReelsCard(reels) {
   `;
 }
 
-function renderWhatsappCard(messages) {
+function renderWhatsappCard(messages, tags) {
   const first = messages[0] || {};
-  const text = first.message || first.copy || "";
+  const text = first.message || "";
   return `
     <div class="glass-card content-card whatsapp">
-      <div class="content-card-header">
-        <h4><span class="material-symbols-outlined text-tertiary">chat</span> WhatsApp Broadcast</h4>
-        <span class="label" style="color:var(--tertiary)">Urgency Optimized</span>
-      </div>
-      <div class="whatsapp-layout">
-        <div class="message-block">
-          <span class="label muted">Message Content</span>
-          <p style="margin-top:12px;font-style:italic">"${escapeHtml(text)}"</p>
-          <button class="copy-btn" data-copy-text="${escapeHtml(text)}" type="button">
-            <span class="material-symbols-outlined">content_copy</span> Copy Text
-          </button>
-        </div>
-        <div>
-          <div class="stat-mini secondary"><strong>84%</strong><span class="label muted">Predicted Open Rate</span></div>
-          <div class="stat-mini tertiary" style="margin-top:12px"><strong>12.5%</strong><span class="label muted">Est. Conversion</span></div>
-        </div>
-      </div>
+      <div class="content-card-header"><h4>WhatsApp Broadcast</h4></div>
+      ${tags ? `<div class="asset-tags-inline">${tags}</div>` : ""}
+      <p class="message-block">"${escapeHtml(text)}"</p>
+      <button class="copy-btn" data-copy-text="${escapeHtml(text)}" type="button">Copy Text</button>
     </div>
   `;
 }
 
 function renderWebsiteCard(pages, input) {
   const first = pages[0] || {};
-  const headline = first.headline || first.title || `Taste tradition with ${input.product}`;
-  const copy = first.copy || first.message || "";
   return `
     <div class="glass-card content-card website">
-      <div class="content-card-header">
-        <h4><span class="material-symbols-outlined text-primary">language</span> Website Hero Section</h4>
-      </div>
-      <div class="hero-preview">
-        <h2>${escapeHtml(headline)}</h2>
-        <p>${escapeHtml(copy)}</p>
-      </div>
-      <button class="copy-btn" data-copy-text="${escapeHtml(`${headline}\n\n${copy}`)}" type="button">
-        <span class="material-symbols-outlined">content_copy</span> Copy Section Copy
-      </button>
+      <h4>Website</h4>
+      <p>${escapeHtml(first.copy || first.title || "")}</p>
     </div>
   `;
 }
 
 function renderLinkedinCard(posts) {
-  const first = posts[0] || {};
-  const body = first.post || first.copy || first.message || "";
+  const body = posts[0]?.post || "";
   return `
     <div class="glass-card content-card linkedin">
-      <div class="content-card-header">
-        <h4><span class="material-symbols-outlined text-primary">share</span> LinkedIn Founder Story</h4>
-      </div>
-      <div class="linkedin-post">
-        <p class="label muted">AI Drafted • Founder post</p>
-        <p>${escapeHtml(body).replace(/\n/g, "<br>")}</p>
-        <button class="copy-btn" data-copy-text="${escapeHtml(body)}" type="button">
-          <span class="material-symbols-outlined">content_copy</span> Copy Post
-        </button>
-      </div>
+      <h4>LinkedIn</h4>
+      <p>${escapeHtml(body)}</p>
+      <button class="copy-btn" data-copy-text="${escapeHtml(body)}" type="button">Copy Post</button>
     </div>
   `;
 }
 
-async function generatePlan(event) {
-  event.preventDefault();
+async function generatePlan() {
   const input = getFormInput();
-  const errors = validateFormInput(input);
 
-  if (errors.length) {
-    alert(errors.join("\n"));
+  if (input.discoveryMode) {
+    alert("Finish Discovery Week first, or use Build plan anyway.");
     return;
   }
 
   updateDraftState();
   switchView("campaign");
+  briefPanel.classList.add("hidden");
   commandCenter.className = "glass-card command-empty loading-state";
   commandCenter.innerHTML = `
     <span class="material-symbols-outlined empty-icon">sync</span>
     <h3>Building your growth system...</h3>
-    <p>Creating weekly sprints, channel assets, metrics, and next actions for ${escapeHtml(input.product)}.</p>
+    <p>Creating weekly sprints and content for ${escapeHtml(input.product)}.</p>
   `;
 
   try {
@@ -846,59 +1088,39 @@ async function generatePlan(event) {
       body: JSON.stringify(input),
     });
     const data = await response.json();
-
     if (!response.ok) throw new Error(data.error || "Failed to generate plan");
 
-    if (data.saveResult?.campaign?.id) {
-      currentCampaignId = data.saveResult.campaign.id;
-    }
+    if (data.saveResult?.campaign?.id) currentCampaignId = data.saveResult.campaign.id;
 
     renderPlan(data.plan, input);
-
     if (data.usedPriorLearnings) {
-      document.querySelector("#campaignProjection").textContent =
-        "AI Projection: informed by last closed campaign";
+      document.querySelector("#campaignProjection").textContent = "AI Projection: informed by last closed campaign";
     }
-
     switchView("campaign");
   } catch (error) {
     commandCenter.className = "glass-card command-empty error-state";
-    commandCenter.innerHTML = `
-      <span class="material-symbols-outlined empty-icon">error</span>
-      <h3>Generation failed</h3>
-      <p>${escapeHtml(error.message)}</p>
-      <p>Check Anthropic, Vercel environment variables, and Supabase table setup.</p>
-    `;
+    commandCenter.innerHTML = `<h3>Generation failed</h3><p>${escapeHtml(error.message)}</p>`;
   }
 }
 
 async function closeCampaign() {
   const statusEl = document.querySelector("#closeCampaignStatus");
   if (!currentCampaignId) {
-    statusEl.textContent = "Generate or load a campaign first before closing.";
+    statusEl.textContent = "Generate or load a campaign first.";
     return;
   }
-
   const tracker = getTrackerData();
   const learnings = getCloseLearnings();
-
   statusEl.textContent = "Saving learnings…";
-
   try {
     const response = await fetch("/api/campaigns", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        id: currentCampaignId,
-        tracker,
-        learnings,
-      }),
+      body: JSON.stringify({ id: currentCampaignId, tracker, learnings }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Failed to close campaign");
-
-    statusEl.textContent = "Campaign closed. Your next plan will use these learnings.";
-    document.querySelector("#dashboardStatusPill").textContent = "CLOSED";
+    statusEl.textContent = "Campaign closed. Next plan will use these learnings.";
     await loadCampaignHistory();
     updateDraftState();
   } catch (error) {
@@ -911,73 +1133,43 @@ function renderChartBars() {
   const input = getFormInput();
   const goal = numberFromCurrency(input.revenueGoal);
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const currentHeights = [55, 65, 45, 80, 95, 30, 10];
-  const goalHeight = 70;
-
   document.querySelector("#chartBars").innerHTML = days
     .map(
       (day, index) => `
         <div class="chart-day">
           <div class="bars">
-            <span class="goal" style="height:${goalHeight}%"></span>
-            <span class="current" style="height:${currentHeights[index]}%"></span>
+            <span class="goal" style="height:70%"></span>
+            <span class="current" style="height:${[55, 65, 45, 80, 95, 30, 10][index]}%"></span>
           </div>
           <span class="label muted">${day}</span>
         </div>
       `,
     )
     .join("");
-
   const gap = Math.max(0, goal - tracker.revenue);
-  document.querySelector("#revenueGap").textContent = gap
-    ? `₹${gap.toLocaleString("en-IN")} left`
-    : "Goal reached";
-  document.querySelector("#avgOrder").textContent =
-    tracker.orders > 0 ? `₹${Math.round(tracker.revenue / tracker.orders).toLocaleString("en-IN")}` : "--";
-  document.querySelector("#revenueGrowthChip").textContent =
-    tracker.revenue > 0
-      ? `+${Math.min(99, Math.round((tracker.revenue / Math.max(goal, 1)) * 100))}% Revenue`
-      : "+0% Revenue";
+  document.querySelector("#revenueGap").textContent = gap ? `₹${gap.toLocaleString("en-IN")} left` : "Goal reached";
 }
 
 function updateInsights() {
   const tracker = getTrackerData();
   const input = getFormInput();
   const goal = numberFromCurrency(input.revenueGoal);
-  const inquiryRate = tracker.views ? ((tracker.inquiries / tracker.views) * 100).toFixed(2) : "0.00";
-  const conversionRate = tracker.inquiries
-    ? ((tracker.orders / tracker.inquiries) * 100).toFixed(1)
-    : "0.0";
+  const intel = computeGoalIntelligence(input);
   const targetProgress = goal ? Math.min(100, Math.round((tracker.revenue / goal) * 100)) : 0;
 
-  const repeat =
-    currentPlan?.nextActions?.[0] ||
-    "Lead with the strongest hook from your generated Reels and test one new angle each week.";
-  const change =
-    currentPlan?.summary?.risk ||
-    "Improve trust proof and WhatsApp CTA clarity before pushing harder on reach.";
+  const repeat = currentPlan?.nextActions?.[0] || (input.promoHook ? `Lead with: ${input.promoHook}` : "Test one Reel hook per week.");
+  const change = intel.isAggressive
+    ? `Phase 1: hit ${compactGoal(intel.recommendedGoalString)} before scaling.`
+    : currentPlan?.summary?.risk || "Track WhatsApp replies, not just views.";
 
   insightCard.innerHTML = `
     <div class="ai-strategy-header">
       <h4><span class="material-symbols-outlined">auto_awesome</span> AI Strategy</h4>
-      <span class="confidence-badge">High Confidence</span>
     </div>
     <div class="ai-strategy-body">
-      <div class="strategy-item">
-        <div class="strategy-icon repeat"><span class="material-symbols-outlined">replay</span></div>
-        <div>
-          <span class="label muted">What to repeat</span>
-          <p>${escapeHtml(repeat)}</p>
-        </div>
-      </div>
-      <div class="strategy-item">
-        <div class="strategy-icon change"><span class="material-symbols-outlined">swap_horiz</span></div>
-        <div>
-          <span class="label muted">What to change</span>
-          <p>${escapeHtml(change)}</p>
-        </div>
-      </div>
-      <p class="muted" style="margin-top:16px">${targetProgress}% of goal • Inquiry rate ${inquiryRate}% • Conversion ${conversionRate}%</p>
+      <div class="strategy-item"><div><span class="label muted">Repeat</span><p>${escapeHtml(repeat)}</p></div></div>
+      <div class="strategy-item"><div><span class="label muted">Focus</span><p>${escapeHtml(change)}</p></div></div>
+      <p class="muted">${targetProgress}% of goal • ~${intel.ordersPerWeek} orders/week needed</p>
     </div>
   `;
 
@@ -985,76 +1177,142 @@ function updateInsights() {
   if (learnings.topObjection) {
     document.querySelector("#objectionQuote").textContent = `"${learnings.topObjection}"`;
   }
-
   renderChartBars();
 }
 
+async function handleWizardNext() {
+  const errors = validateStep(currentSetupStep);
+  if (errors.length) {
+    alert(errors.join("\n"));
+    return;
+  }
+
+  if (currentSetupStep === 2) {
+    const answers = getAudienceAnswers();
+    if (needsDiscovery(answers) && !generatorForm.elements.namedItem("audience").value) {
+      await openDiscoveryWeek();
+      return;
+    }
+    if (!generatorForm.elements.namedItem("audience").value) {
+      await runAudienceCoach();
+      if (!generatorForm.elements.namedItem("audience").value) return;
+    }
+  }
+
+  if (currentSetupStep < 5) showSetupStep(currentSetupStep + 1);
+}
+
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !experimentPanel.classList.contains("hidden")) {
-    closeExperimentPanel();
+  if (event.key === "Escape") {
+    experimentPanel.classList.add("hidden");
+    coachPanel.classList.add("hidden");
+    discoveryPanel.classList.add("hidden");
+    briefPanel.classList.add("hidden");
   }
 });
 
 document.addEventListener("click", async (event) => {
   const viewTrigger = event.target.closest("[data-view]");
-  if (viewTrigger?.dataset.view) {
-    switchView(viewTrigger.dataset.view);
-  }
+  if (viewTrigger?.dataset.view) switchView(viewTrigger.dataset.view);
 
-  const weekBtn = event.target.closest("[data-week-index]");
-  if (weekBtn) {
-    openExperimentPanel(Number(weekBtn.dataset.weekIndex));
+  if (event.target.closest("[data-week-index]")) {
+    openExperimentPanel(Number(event.target.closest("[data-week-index]").dataset.weekIndex));
     return;
   }
-
-  if (event.target.closest("[data-close-experiments]")) {
-    closeExperimentPanel();
-    return;
-  }
+  if (event.target.closest("[data-close-experiments]")) return closeExperimentPanel();
+  if (event.target.closest("[data-close-coach]")) return coachPanel.classList.add("hidden");
+  if (event.target.closest("[data-close-discovery]")) return discoveryPanel.classList.add("hidden");
+  if (event.target.closest("[data-close-brief]")) return briefPanel.classList.add("hidden");
 
   const loadBtn = event.target.closest("[data-load-campaign]");
-  if (loadBtn) {
-    loadCampaignFromHistory(loadBtn.dataset.loadCampaign);
+  if (loadBtn) return loadCampaignFromHistory(loadBtn.dataset.loadCampaign);
+
+  const runBtn = event.target.closest("[data-run-again]");
+  if (runBtn) return loadCampaignFromHistory(runBtn.dataset.runAgain, { duplicate: true });
+
+  const stopBtn = event.target.closest("[data-stop-campaign]");
+  if (stopBtn) {
+    try {
+      await stopCampaign(stopBtn.dataset.stopCampaign);
+    } catch (e) {
+      alert(e.message);
+    }
     return;
   }
 
-  const dupBtn = event.target.closest("[data-duplicate-campaign]");
-  if (dupBtn) {
-    loadCampaignFromHistory(dupBtn.dataset.duplicateCampaign, { duplicate: true });
+  const delBtn = event.target.closest("[data-delete-campaign]");
+  if (delBtn) {
+    try {
+      await deleteCampaign(delBtn.dataset.deleteCampaign);
+    } catch (e) {
+      alert(e.message);
+    }
     return;
   }
 
   const copy = event.target.closest("[data-copy-text]");
   if (copy) {
     await navigator.clipboard.writeText(copy.dataset.copyText || "");
-    const original = copy.innerHTML;
-    copy.innerHTML = '<span class="material-symbols-outlined">check</span> Copied';
-    setTimeout(() => {
-      copy.innerHTML = original;
-    }, 1400);
   }
 });
 
-document.querySelector("#optimizeBtn")?.addEventListener("click", () => {
-  if (!currentPlan) {
-    switchView("setup");
+document.querySelector("#wizardNext")?.addEventListener("click", () => void handleWizardNext());
+document.querySelector("#wizardPrev")?.addEventListener("click", () => {
+  if (currentSetupStep > 1) showSetupStep(currentSetupStep - 1);
+});
+document.querySelectorAll("#setupWizardNav .wizard-step").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const step = Number(btn.dataset.step);
+    if (step <= currentSetupStep) showSetupStep(step);
+  });
+});
+
+document.querySelector("#coachAudienceBtn")?.addEventListener("click", () => void runAudienceCoach());
+document.querySelector("#useClearAudience")?.addEventListener("click", () => {
+  if (pendingCoachDraft) {
+    generatorForm.elements.namedItem("audience").value = pendingCoachDraft.clearVersion || "";
+    generatorForm.elements.namedItem("hesitationLabel").value = pendingCoachDraft.hesitationLabel || "";
+  }
+  coachPanel.classList.add("hidden");
+  document.querySelector("#audienceCoachStatus").textContent = "Saved clear version.";
+});
+document.querySelector("#useFounderAudience")?.addEventListener("click", () => {
+  if (pendingCoachDraft) {
+    generatorForm.elements.namedItem("audience").value = pendingCoachDraft.founderSummary || "";
+  }
+  coachPanel.classList.add("hidden");
+});
+
+document.querySelector("#showDiscoveryReturn")?.addEventListener("click", () => {
+  document.querySelector("#discoveryReturn").classList.remove("hidden");
+});
+document.querySelector("#synthesizeDiscoveryBtn")?.addEventListener("click", () => void synthesizeDiscovery());
+document.querySelector("#forcePlanBtn")?.addEventListener("click", () => {
+  discoveryOverride = true;
+  discoveryMode = false;
+  discoveryPanel.classList.add("hidden");
+  alert("OK — we'll build a plan, but it may be less accurate without customer data.");
+});
+
+document.querySelector("#structureFailuresBtn")?.addEventListener("click", () => void structureFailures());
+document.querySelector("#openBriefBtn")?.addEventListener("click", async () => {
+  const errors = validateStep(5);
+  if (errors.length) {
+    alert(errors.join("\n"));
     return;
   }
-  switchView("tracker");
+  await structureFailures();
+  renderBriefReview();
+  briefPanel.classList.remove("hidden");
 });
+document.querySelector("#confirmGenerateBtn")?.addEventListener("click", () => void generatePlan());
 
-document.querySelector("#syncMetrics")?.addEventListener("click", () => {
-  updateDraftState();
-  document.querySelector("#closeCampaignStatus").textContent = "Metrics synced to dashboard.";
+document.querySelector("#optimizeBtn")?.addEventListener("click", () => {
+  switchView(currentPlan ? "tracker" : "setup");
 });
-
-document.querySelector("#closeCampaignBtn")?.addEventListener("click", () => {
-  void closeCampaign();
-});
-
-document.querySelector("#refreshHistory")?.addEventListener("click", () => {
-  void loadCampaignHistory();
-});
+document.querySelector("#syncMetrics")?.addEventListener("click", updateDraftState);
+document.querySelector("#closeCampaignBtn")?.addEventListener("click", () => void closeCampaign());
+document.querySelector("#refreshHistory")?.addEventListener("click", () => void loadCampaignHistory());
 
 sidebarNav?.addEventListener("click", (event) => {
   const link = event.target.closest(".nav-link[data-view]");
@@ -1067,15 +1325,17 @@ generatorForm.addEventListener("input", () => {
     currentPlan = null;
     renderEmptyPlan();
   }
+  if (currentSetupStep === 4) renderGoalIntelligence();
   updateDraftState();
 });
-generatorForm.addEventListener("submit", generatePlan);
+generatorForm.addEventListener("submit", (e) => e.preventDefault());
 trackerForm.addEventListener("input", () => {
   updateDraftState();
   updateInsights();
 });
 
 renderEmptyPlan();
+showSetupStep(1);
 updateDraftState();
 setRingProgress(0);
 void loadCampaignHistory();

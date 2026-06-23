@@ -58,26 +58,21 @@ async function listCampaigns() {
   };
 }
 
-async function closeCampaign(body) {
+async function patchCampaign(id, metricsPatch) {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const table = tableName();
 
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error("Supabase environment variables not configured");
+  const getRes = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}&select=metrics`, {
+    headers: supabaseHeaders(serviceRoleKey),
+  });
+  const rows = await getRes.json();
+  if (!getRes.ok) {
+    throw new Error(rows?.message || "Failed to load campaign");
   }
 
-  const { id, tracker, learnings } = body;
-  if (!id) {
-    throw new Error("Campaign id is required");
-  }
-
-  const metrics = {
-    status: "closed",
-    closedAt: new Date().toISOString(),
-    tracker: tracker || {},
-    learnings: learnings || {},
-  };
+  const existing = rows[0]?.metrics || {};
+  const metrics = { ...existing, ...metricsPatch };
 
   const response = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
     method: "PATCH",
@@ -89,12 +84,57 @@ async function closeCampaign(body) {
   });
 
   const data = await response.json();
-
   if (!response.ok) {
-    throw new Error(data?.message || "Failed to close campaign");
+    throw new Error(data?.message || "Failed to update campaign");
   }
 
   return { campaign: data[0] };
+}
+
+async function closeCampaign(body) {
+  const { id, tracker, learnings } = body;
+  if (!id) throw new Error("Campaign id is required");
+
+  return patchCampaign(id, {
+    status: "closed",
+    closedAt: new Date().toISOString(),
+    tracker: tracker || {},
+    learnings: learnings || {},
+  });
+}
+
+async function updateStatus(body) {
+  const { id, status } = body;
+  if (!id) throw new Error("Campaign id is required");
+  if (!["live", "paused", "closed"].includes(status)) {
+    throw new Error("status must be live, paused, or closed");
+  }
+
+  const patch = { status };
+  if (status === "paused") patch.pausedAt = new Date().toISOString();
+  if (status === "live") patch.resumedAt = new Date().toISOString();
+
+  return patchCampaign(id, patch);
+}
+
+async function deleteCampaign(id) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const table = tableName();
+
+  if (!id) throw new Error("Campaign id is required");
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
+    method: "DELETE",
+    headers: supabaseHeaders(serviceRoleKey),
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data?.message || "Failed to delete campaign");
+  }
+
+  return { deleted: true, id };
 }
 
 module.exports = async function handler(req, res) {
@@ -106,7 +146,20 @@ module.exports = async function handler(req, res) {
 
     if (req.method === "PATCH") {
       const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-      const result = await closeCampaign(body);
+
+      if (body.tracker != null || body.learnings != null) {
+        const result = await closeCampaign(body);
+        return json(res, 200, result);
+      }
+
+      const result = await updateStatus(body);
+      return json(res, 200, result);
+    }
+
+    if (req.method === "DELETE") {
+      const url = new URL(req.url, "http://localhost");
+      const id = url.searchParams.get("id");
+      const result = await deleteCampaign(id);
       return json(res, 200, result);
     }
 

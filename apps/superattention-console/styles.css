@@ -2078,6 +2078,15 @@ button {
   color: var(--primary);
 }
 
+.history-status.status-paused {
+  background: rgba(255, 180, 171, 0.15);
+  color: var(--tertiary);
+}
+
+.history-row-actions .danger {
+  color: var(--tertiary);
+}
+
 .close-campaign-panel {
   margin-top: 20px;
   padding: 16px;
@@ -2208,4 +2217,201 @@ button {
     width: 100%;
     justify-content: flex-start;
   }
+}
+
+/* V1.2 Brand Coach */
+.setup-wizard-nav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.wizard-step {
+  padding: 10px 14px;
+  border: 1px solid rgba(70, 69, 84, 0.35);
+  border-radius: 999px;
+  background: var(--surface-container-low);
+  color: var(--on-surface-variant);
+  font-family: Geist, Inter, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wizard-step.active {
+  border-color: rgba(192, 193, 255, 0.5);
+  background: rgba(192, 193, 255, 0.12);
+  color: var(--primary);
+}
+
+.setup-step.hidden {
+  display: none;
+}
+
+.coach-intro {
+  margin: 0 0 16px;
+  color: var(--on-surface-variant);
+  font-size: 14px;
+}
+
+.inline-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--on-surface-variant);
+}
+
+.wizard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.goal-intel-card {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid rgba(188, 255, 95, 0.25);
+  background: rgba(188, 255, 95, 0.05);
+}
+
+.goal-intel-card h4 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.goal-options {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.goal-option {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(70, 69, 84, 0.35);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+
+.goal-option strong {
+  display: block;
+}
+
+.goal-option small {
+  color: var(--on-surface-variant);
+  font-size: 12px;
+}
+
+.field-hint.warn {
+  color: var(--tertiary);
+  margin-top: 10px;
+}
+
+.coach-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.coach-panel.hidden {
+  display: none;
+}
+
+.coach-panel-card,
+.discovery-panel-card,
+.brief-panel-card {
+  width: min(720px, 100%);
+  max-height: min(85vh, 800px);
+  overflow: auto;
+}
+
+.coach-compare {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+@media (min-width: 640px) {
+  .coach-compare {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.coach-panel-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.discovery-tasks {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.discovery-task {
+  padding: 14px;
+  border: 1px solid rgba(70, 69, 84, 0.35);
+  border-radius: var(--radius-lg);
+  background: var(--surface-container-low);
+}
+
+.script-block {
+  margin: 8px 0;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-lowest);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.discovery-interim {
+  padding: 14px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.discovery-return label {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.brief-review {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.brief-review-block {
+  padding: 12px;
+  border: 1px solid rgba(70, 69, 84, 0.3);
+  border-radius: var(--radius-lg);
+}
+
+.asset-tags-row,
+.asset-tags-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.asset-tag {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(192, 193, 255, 0.15);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 600;
 }
