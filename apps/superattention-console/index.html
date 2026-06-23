@@ -231,24 +231,27 @@
 
             <div class="setup-step hidden" data-setup-step="2">
               <p class="form-section-title">Who is your customer?</p>
-              <p class="coach-intro">Answer in your own words. Not sure? Pick "I'm not sure" — we'll give you a 1-week checklist.</p>
-              <div class="form-block">
+              <p class="coach-intro">Answer in your own words. Tap <strong>Not sure yet</strong> on any question if you need Discovery Week first.</p>
+              <div class="form-block audience-field" data-field="whoBuys">
                 <label class="field-label">Who actually buys?</label>
                 <p class="field-hint">We ask because your Reels and WhatsApp must speak to one person, not everyone.</p>
                 <input name="whoBuys" placeholder="e.g. Working moms in Faridabad" />
-                <label class="inline-check"><input type="checkbox" name="whoBuysUnsure" /> I'm not sure yet</label>
+                <button class="not-sure-toggle" type="button" data-unsure-for="whoBuys">Not sure yet</button>
+                <input type="hidden" name="whoBuysUnsure" value="" />
               </div>
-              <div class="form-block">
+              <div class="form-block audience-field" data-field="whereLive">
                 <label class="field-label">Where do they live?</label>
                 <p class="field-hint">City or areas you can actually deliver to.</p>
                 <input name="whereLive" placeholder="e.g. Faridabad Sector 15-21" />
-                <label class="inline-check"><input type="checkbox" name="whereLiveUnsure" /> I'm not sure yet</label>
+                <button class="not-sure-toggle" type="button" data-unsure-for="whereLive">Not sure yet</button>
+                <input type="hidden" name="whereLiveUnsure" value="" />
               </div>
-              <div class="form-block">
+              <div class="form-block audience-field" data-field="substitute">
                 <label class="field-label">What do they buy instead of you?</label>
                 <p class="field-hint">Local auntie, supermarket brand, Swiggy — whoever you compete with today.</p>
                 <input name="substitute" placeholder="e.g. Mother's Recipe or local home chef" />
-                <label class="inline-check"><input type="checkbox" name="substituteUnsure" /> I'm not sure yet</label>
+                <button class="not-sure-toggle" type="button" data-unsure-for="substitute">Not sure yet</button>
+                <input type="hidden" name="substituteUnsure" value="" />
               </div>
               <div class="form-block">
                 <label class="field-label">Why do they hesitate?</label>
@@ -277,7 +280,8 @@
               <textarea name="audience" class="hidden" aria-hidden="true"></textarea>
               <input type="hidden" name="hesitationLabel" />
               <button class="btn-secondary" id="coachAudienceBtn" type="button">Help me write this clearly</button>
-              <p class="field-hint" id="audienceCoachStatus"></p>
+              <button class="btn-ghost" id="startDiscoveryBtn" type="button">I'm not sure about any of this → Discovery Week</button>
+              <p class="field-hint inline-error hidden" id="audienceCoachStatus"></p>
             </div>
 
             <div class="setup-step hidden" data-setup-step="3">
@@ -292,20 +296,60 @@
                 <p class="field-hint">Free delivery, first-order off, combo — optional but powerful.</p>
                 <input name="promoHook" placeholder="e.g. Free next-day delivery in Faridabad" />
               </div>
+              <input type="hidden" name="offerBundleDetail" />
+              <input type="hidden" name="offerSizeVariant" />
+              <input type="hidden" name="offerPromoWhy" />
+              <select name="offerPromoType" class="hidden" aria-hidden="true">
+                <option value="">Promo type</option>
+                <option value="delivery">Free delivery</option>
+                <option value="sample">Free sample</option>
+                <option value="discount">Discount</option>
+                <option value="combo">Combo/bundle deal</option>
+                <option value="urgency">Limited time</option>
+              </select>
+              <button class="btn-secondary" id="coachOfferBtn" type="button">Help me build my offer</button>
+              <p class="field-hint inline-error hidden" id="offerCoachStatus"></p>
               <input type="hidden" name="offer" />
             </div>
 
             <div class="setup-step hidden" data-setup-step="5">
             <p class="form-section-title">Brand story</p>
             <div class="form-block">
-              <label class="field-label">Why this brand exists</label>
-              <p class="field-hint">Founder mission in 2–3 sentences. What problem are you solving emotionally?</p>
-              <textarea name="brandMission" placeholder="Indian meals have always had a love affair with pickles. We make ghar-ka taste without excess oil." required minlength="20"></textarea>
+              <label class="field-label">Why did you start? (rough notes OK)</label>
+              <input name="missionWhyStarted" placeholder="e.g. Family missed grandma's pickle taste" />
             </div>
             <div class="form-block">
-              <label class="field-label">What makes you different</label>
-              <p class="field-hint">Non-negotiables: non-oily, mishri not sugar, founder delivery, etc.</p>
-              <textarea name="brandDifferentiation" placeholder="Non-oily line, zero-oil chunda, founder delivers in Faridabad" required minlength="10"></textarea>
+              <label class="field-label">What meal moment are you selling?</label>
+              <input name="missionEmotional" placeholder="e.g. Sunday lunch, tiffin sides, nostalgia" />
+            </div>
+            <div class="form-block">
+              <label class="field-label">How should customers feel after first order?</label>
+              <input name="missionCustomerFeel" placeholder="e.g. Proud to serve ghar-ka taste" />
+            </div>
+            <div class="form-block">
+              <label class="field-label">Your mission (appears in plan)</label>
+              <p class="field-hint">2–3 sentences. Use the coach if you're not sure yet.</p>
+              <textarea name="brandMission" placeholder="Indian meals have always had a love affair with pickles..." required minlength="20"></textarea>
+              <button class="btn-secondary" id="coachMissionBtn" type="button">Help me write my mission</button>
+              <p class="field-hint inline-error hidden" id="missionCoachStatus"></p>
+            </div>
+            <div class="form-block">
+              <label class="field-label">What can you prove?</label>
+              <input name="diffProvable" placeholder="e.g. FSSAI, non-oily process, mishri not sugar" />
+            </div>
+            <div class="form-block">
+              <label class="field-label">What do customers say after tasting?</label>
+              <input name="diffCustomerSays" placeholder="e.g. Tastes like mother's recipe" />
+            </div>
+            <div class="form-block">
+              <label class="field-label">What competitors can't copy?</label>
+              <input name="diffCannotCopy" placeholder="e.g. Founder delivery in Faridabad" />
+            </div>
+            <div class="form-block">
+              <label class="field-label">What makes you different (appears in plan)</label>
+              <textarea name="brandDifferentiation" placeholder="Non-oily line, founder delivers in Faridabad" required minlength="10"></textarea>
+              <button class="btn-secondary" id="coachDiffBtn" type="button">Help me say what's different</button>
+              <p class="field-hint inline-error hidden" id="diffCoachStatus"></p>
             </div>
             <div class="form-row">
               <div class="form-block">
@@ -320,13 +364,16 @@
               </div>
               <div class="form-block">
                 <label class="field-label">Brand tone</label>
-                <p class="field-hint">Pick 2–4 words that describe your voice.</p>
-                <input name="brandTone" list="toneOptions" placeholder="homemade, nostalgic, trustworthy" required />
-                <datalist id="toneOptions">
-                  <option value="homemade, nostalgic, trustworthy"></option>
-                  <option value="bold, witty, premium"></option>
-                  <option value="playful, family-friendly, local"></option>
-                </datalist>
+                <p class="field-hint">Tap 2–4 words — we'll combine them.</p>
+                <div class="tone-chips" id="toneChips">
+                  <button type="button" class="tone-chip" data-tone="homemade">homemade</button>
+                  <button type="button" class="tone-chip" data-tone="nostalgic">nostalgic</button>
+                  <button type="button" class="tone-chip" data-tone="trustworthy">trustworthy</button>
+                  <button type="button" class="tone-chip" data-tone="playful">playful</button>
+                  <button type="button" class="tone-chip" data-tone="premium">premium</button>
+                  <button type="button" class="tone-chip" data-tone="local">local</button>
+                </div>
+                <input name="brandTone" placeholder="homemade, nostalgic, trustworthy" required />
               </div>
             </div>
             <p class="form-section-title">What didn't work before? (optional)</p>
@@ -392,6 +439,9 @@
                 </label>
               </div>
               <p class="field-hint warn hidden" id="goalWarning"></p>
+              <p class="field-hint goal-coach-narrative" id="goalCoachNarrative"></p>
+              <p class="field-hint hidden" id="channelWarning"></p>
+              <p class="field-hint hidden" id="capacityWarning"></p>
             </div>
 
             <div class="form-row">
@@ -475,6 +525,7 @@
               <button class="btn-secondary" id="wizardNext" type="button">Next</button>
               <button class="btn-primary hidden" id="openBriefBtn" type="button">Review brief →</button>
             </div>
+            <p class="field-hint inline-error hidden" id="wizardStepError"></p>
             <p class="field-hint hidden" id="step5Hint">Last step — click <strong>Review brief</strong> to check everything before we build your plan.</p>
           </form>
 
@@ -592,7 +643,8 @@
               <label>Repeat next time<textarea name="repeatNext" rows="2" placeholder="e.g. Founder delivery story"></textarea></label>
               <label>Stop doing<textarea name="stopDoing" rows="2" placeholder="e.g. Generic discount posts"></textarea></label>
               <button class="btn-primary full" type="button" id="closeCampaignBtn">Close campaign &amp; save learnings</button>
-              <p class="field-hint" id="closeCampaignStatus"></p>
+              <button class="btn-ghost full" type="button" id="coachCloseBtn">Help me phrase learnings</button>
+              <p class="field-hint inline-error hidden" id="closeCampaignStatus"></p>
             </div>
           </form>
 
@@ -647,9 +699,13 @@
             <span class="material-symbols-outlined">close</span>
           </button>
         </div>
-        <div class="coach-compare">
+        <div class="coach-compare" id="coachCompareBody">
           <div><span class="label muted">What you said</span><p id="coachFounderText"></p></div>
           <div><span class="label text-secondary">Clear version</span><p id="coachClearText"></p></div>
+        </div>
+        <div class="coach-loading hidden" id="coachLoading">
+          <span class="material-symbols-outlined spin">sync</span>
+          <p>Writing a clear version for you…</p>
         </div>
         <div class="coach-panel-actions">
           <button class="btn-ghost" id="useFounderAudience" type="button">Keep mine</button>
@@ -714,7 +770,7 @@
         </div>
         <div id="briefReview" class="brief-review"></div>
         <button class="btn-primary full" id="confirmGenerateBtn" type="button">Looks good → Build my 30-day plan</button>
-        <p class="field-hint" id="briefGenerateStatus"></p>
+        <p class="field-hint inline-error hidden" id="briefGenerateStatus"></p>
       </div>
     </div>
 
