@@ -168,6 +168,7 @@
                 <span>AI Strategic Move</span>
                 <div class="line"></div>
               </div>
+              <div class="campaign-health-banner hidden" id="campaignHealthBanner"></div>
               <h4 id="insightTitle">Start with Brand Setup</h4>
               <p id="insightBody">
                 Enter your product, audience, and revenue goal. superattention.ai will build a
@@ -436,6 +437,16 @@
 
             <div class="setup-step hidden" data-setup-step="4">
             <p class="form-section-title">Campaign goal</p>
+            <div class="form-block">
+              <label class="field-label">What does winning look like?</label>
+              <p class="field-hint">Shapes how we prioritize your 30-day plan.</p>
+              <select name="northStarMetric" required>
+                <option value="orders">Orders / revenue</option>
+                <option value="list_size">WhatsApp list / inquiries</option>
+                <option value="repeat">Repeat buyers</option>
+                <option value="proof_of_hook">Prove one hook works</option>
+              </select>
+            </div>
             <div class="form-row">
               <div class="form-block">
                 <label class="field-label"><span class="material-symbols-outlined">target</span> Revenue goal (₹)</label>
@@ -584,8 +595,14 @@
           </div>
           <div class="page-actions">
             <span class="ai-projection" id="campaignProjection">AI Projection: pending</span>
+            <span class="campaign-week-chip hidden" id="campaignWeekChip">Week 1 of 4</span>
           </div>
         </header>
+
+        <div class="glass-card plan-changes-card hidden" id="planChangesCard">
+          <h4><span class="material-symbols-outlined text-secondary">auto_awesome</span> What we changed from last campaign</h4>
+          <ul id="planChangesList"></ul>
+        </div>
 
         <div class="glass-card campaign-history" id="campaignHistoryPanel">
           <div class="history-header">
@@ -648,7 +665,16 @@
           <form class="glass-card tracker-form" id="trackerForm">
             <div class="form-header">
               <h4><span class="material-symbols-outlined text-primary">edit_note</span> Manual Metric Input</h4>
-              <span class="label muted">Current Week</span>
+              <label class="tracker-week-label">
+                <span class="label muted">Campaign week</span>
+                <select name="manualWeek" id="manualWeek">
+                  <option value="">Auto (by days)</option>
+                  <option value="1">Week 1</option>
+                  <option value="2">Week 2</option>
+                  <option value="3">Week 3</option>
+                  <option value="4">Week 4</option>
+                </select>
+              </label>
             </div>
             <div class="form-row">
               <label>Views<input type="number" name="views" value="0" min="0" /></label>
@@ -668,8 +694,19 @@
 
             <div class="glass-card close-campaign-panel" id="closeCampaignPanel">
               <h4><span class="material-symbols-outlined text-secondary">flag</span> Close Campaign</h4>
-              <p class="muted">Quick answers — we'll save them for your next plan.</p>
-              <label>Best hook or message<textarea name="bestHook" rows="2" placeholder="Which Reel or WhatsApp got replies?"></textarea></label>
+              <p class="muted">Structured learnings — we feed these into your next plan.</p>
+              <label>Best message (exact words)<textarea name="bestMessage" rows="2" placeholder="WhatsApp or Reel copy that got replies"></textarea></label>
+              <label>Best creative (photo / Reel type)<textarea name="bestCreative" rows="2" placeholder="e.g. Founder holding jar, POV tasting"></textarea></label>
+              <label>Best channel<select name="bestChannel">
+                <option value="">Select</option>
+                <option value="WhatsApp">WhatsApp</option>
+                <option value="Instagram Reels">Instagram Reels</option>
+                <option value="Instagram Stories">Instagram Stories</option>
+                <option value="Website">Website</option>
+                <option value="Other">Other</option>
+              </select></label>
+              <label>Best offer<textarea name="bestOffer" rows="2" placeholder="Promo or bundle that converted"></textarea></label>
+              <textarea name="bestHook" class="hidden" aria-hidden="true"></textarea>
               <label>Top objection<select name="closeObjection">
                 <option value="">Select</option>
                 <option value="Price feels high">Price feels high</option>

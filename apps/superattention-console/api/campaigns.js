@@ -103,6 +103,22 @@ async function closeCampaign(body) {
   });
 }
 
+async function saveCampaignProgress(body) {
+  const { id, tracker, experimentProgress, manualWeek } = body;
+  if (!id) throw new Error("Campaign id is required");
+
+  const patch = {
+    tracker: tracker || {},
+    trackerUpdatedAt: new Date().toISOString(),
+  };
+  if (experimentProgress && typeof experimentProgress === "object") {
+    patch.experimentProgress = experimentProgress;
+  }
+  if (manualWeek != null) patch.manualWeek = manualWeek;
+
+  return patchCampaign(id, patch);
+}
+
 async function updateStatus(body) {
   const { id, status } = body;
   if (!id) throw new Error("Campaign id is required");
@@ -147,7 +163,12 @@ module.exports = async function handler(req, res) {
     if (req.method === "PATCH") {
       const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
 
-      if (body.tracker != null || body.learnings != null) {
+      if (body.action === "save_progress") {
+        const result = await saveCampaignProgress(body);
+        return json(res, 200, result);
+      }
+
+      if (body.action === "close" || body.learnings != null) {
         const result = await closeCampaign(body);
         return json(res, 200, result);
       }

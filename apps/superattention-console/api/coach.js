@@ -241,7 +241,10 @@ function closeDebriefPrompt(input, learnings) {
   return `Structure campaign close learnings for next growth plan.
 
 Brand: ${input.brandName}
-Best hook: ${learnings.bestHook || ""}
+Best message: ${learnings.bestMessage || learnings.bestHook || ""}
+Best creative: ${learnings.bestCreative || ""}
+Best channel: ${learnings.bestChannel || ""}
+Best offer: ${learnings.bestOffer || ""}
 Top objection: ${learnings.topObjection || ""}
 Repeat: ${learnings.repeat || ""}
 Stop: ${learnings.stop || ""}
@@ -251,7 +254,11 @@ Final revenue: ${learnings.finalRevenue ?? ""}
 Return ONLY valid JSON:
 {
   "summary": "2 sentences what worked and what to change",
-  "bestHook": "refined best hook",
+  "bestMessage": "exact best WhatsApp or Reel message",
+  "bestCreative": "best photo or Reel format",
+  "bestChannel": "WhatsApp or Reels or other",
+  "bestOffer": "promo or bundle that worked",
+  "bestHook": "same as bestMessage for backward compat",
   "topObjection": "refined objection",
   "repeat": "what to repeat",
   "stop": "what to stop"

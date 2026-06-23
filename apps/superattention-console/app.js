@@ -18,6 +18,7 @@ const sampleBrand = {
   campaignScope: "single_sku",
   goalAmount: "50000",
   goalDays: "30",
+  northStarMetric: "orders",
   orderChannel: "WhatsApp with UPI before delivery",
   deliveryArea: "Faridabad",
   reelsPerWeek: "2",
@@ -79,6 +80,186 @@ const DRAFT_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
 let draftSaveTimer = null;
 let trackerSaveTimer = null;
 let suppressDraftSave = false;
+let experimentProgress = {};
+
+const NORTH_STAR_LABELS = {
+  orders: "Orders / revenue",
+  list_size: "WhatsApp list / inquiries",
+  repeat: "Repeat buyers",
+  proof_of_hook: "Prove one hook works",
+};
+
+function experimentKey(weekIndex, expIndex) {
+  return `${weekIndex}-${expIndex}`;
+}
+
+function getActiveCampaignRow() {
+  return campaignHistory.find((c) => c.id === currentCampaignId) || null;
+}
+
+function getCampaignWeekInfo(input) {
+  const row = getActiveCampaignRow();
+  const metrics = row?.metrics || {};
+  const started = metrics.campaignStartedAt || row?.created_at;
+  const goalDays = parseNumber(input.goalDays) || 30;
+  const totalWeeks = Math.max(Math.ceil(goalDays / 7), 1);
+  const manual = parseNumber(document.querySelector("#manualWeek")?.value || metrics.manualWeek);
+  let currentWeek = manual || null;
+  if (!currentWeek && started) {
+    const elapsed = Date.now() - new Date(started).getTime();
+    currentWeek = Math.min(totalWeeks, Math.max(1, Math.floor(elapsed / (7 * 24 * 60 * 60 * 1000)) + 1));
+  }
+  if (!currentWeek) currentWeek = 1;
+  const daysRemaining = started
+    ? Math.max(0, goalDays - Math.floor((Date.now() - new Date(started).getTime()) / 86400000))
+    : goalDays;
+  return { currentWeek, totalWeeks, daysRemaining, startedAt: started };
+}
+
+function loadExperimentProgressFromMetrics(metrics = {}) {
+  experimentProgress = { ...(metrics.experimentProgress || {}) };
+}
+
+function countCompletedExperiments() {
+  return Object.values(experimentProgress).filter(Boolean).length;
+}
+
+function totalExperimentsInPlan() {
+  const weeks = currentPlan?.weeklyPlan || [];
+  return weeks.reduce((sum, week) => sum + (week.experiments || []).length, 0);
+}
+
+function buildPlanChangeSummary(learnings) {
+  if (!learnings) return [];
+  const bullets = [];
+  const bestMsg = learnings.bestMessage || learnings.bestHook;
+  if (bestMsg) bullets.push(`Leading with your best message: "${bestMsg.slice(0, 100)}${bestMsg.length > 100 ? "…" : ""}"`);
+  if (learnings.bestChannel) bullets.push(`Doubling down on ${learnings.bestChannel}`);
+  if (learnings.bestCreative) {
+    bullets.push(`More creative like: ${learnings.bestCreative.slice(0, 80)}${learnings.bestCreative.length > 80 ? "…" : ""}`);
+  }
+  if (learnings.bestOffer) {
+    bullets.push(`Offer angle: ${learnings.bestOffer.slice(0, 80)}${learnings.bestOffer.length > 80 ? "…" : ""}`);
+  }
+  if (learnings.repeat) bullets.push(`Repeat: ${learnings.repeat.slice(0, 100)}`);
+  if (learnings.stop) bullets.push(`Stop: ${learnings.stop.slice(0, 100)}`);
+  if (learnings.topObjection) bullets.push(`Addressing objection: ${learnings.topObjection}`);
+  return bullets;
+}
+
+function renderPlanChangesCard(learnings) {
+  const card = document.querySelector("#planChangesCard");
+  const list = document.querySelector("#planChangesList");
+  if (!card || !list) return;
+  const bullets = buildPlanChangeSummary(learnings);
+  if (!bullets.length) {
+    card.classList.add("hidden");
+    return;
+  }
+  card.classList.remove("hidden");
+  list.innerHTML = bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("");
+}
+
+function getCampaignHealth(input, tracker) {
+  const row = getActiveCampaignRow();
+  if (!row || row.status === "closed" || !currentPlan) return null;
+  const metrics = row.metrics || {};
+  const messages = [];
+  let level = "info";
+
+  const goalDays = parseNumber(input.goalDays) || 30;
+  const started = metrics.campaignStartedAt || row.created_at;
+  const elapsedDays = started ? (Date.now() - new Date(started).getTime()) / 86400000 : 0;
+  const goal = numberFromCurrency(input.revenueGoal);
+
+  if (goal && elapsedDays > 3) {
+    const expectedProgress = (elapsedDays / goalDays) * goal;
+    if (tracker.revenue < expectedProgress * 0.5) {
+      messages.push("Behind on revenue pace — focus on WhatsApp follow-ups this week.");
+      level = "warn";
+    }
+  }
+
+  const lastUpdate = metrics.trackerUpdatedAt;
+  if (lastUpdate) {
+    const daysSince = (Date.now() - new Date(lastUpdate).getTime()) / 86400000;
+    if (daysSince >= 7) {
+      messages.push("No tracker update in 7+ days — log numbers in Growth Tracker.");
+      level = "warn";
+    }
+  } else if (elapsedDays >= 7) {
+    messages.push("Save your first progress update in Growth Tracker.");
+  }
+
+  return messages.length ? { level, messages } : null;
+}
+
+function renderCampaignHealth(input, tracker) {
+  const banner = document.querySelector("#campaignHealthBanner");
+  if (!banner) return;
+  const health = getCampaignHealth(input, tracker);
+  if (!health) {
+    banner.classList.add("hidden");
+    banner.textContent = "";
+    return;
+  }
+  banner.classList.remove("hidden");
+  banner.classList.toggle("warn", health.level === "warn");
+  banner.textContent = health.messages.join(" ");
+}
+
+function renderCampaignWeekUI(input) {
+  const chip = document.querySelector("#campaignWeekChip");
+  const topDays = document.querySelector("#topDaysRemaining");
+  if (!currentPlan || !currentCampaignId) {
+    chip?.classList.add("hidden");
+    return;
+  }
+  const { currentWeek, totalWeeks, daysRemaining } = getCampaignWeekInfo(input);
+  if (chip) {
+    chip.textContent = `Week ${currentWeek} of ${totalWeeks}`;
+    chip.classList.remove("hidden");
+  }
+  if (topDays) topDays.textContent = `${daysRemaining} days remaining`;
+}
+
+async function saveCampaignProgressToServer() {
+  if (!currentCampaignId) return { saved: false };
+  const tracker = getTrackerData();
+  const manualWeek = document.querySelector("#manualWeek")?.value || "";
+  try {
+    const response = await fetch("/api/campaigns", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "save_progress",
+        id: currentCampaignId,
+        tracker,
+        experimentProgress,
+        manualWeek: manualWeek ? Number(manualWeek) : null,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Failed to save progress");
+    const row = campaignHistory.find((c) => c.id === currentCampaignId);
+    if (row) {
+      row.metrics = data.campaign?.metrics || row.metrics;
+    }
+    return { saved: true };
+  } catch (error) {
+    return { saved: false, error: error.message };
+  }
+}
+
+async function toggleExperimentDone(key, done) {
+  experimentProgress[key] = done;
+  saveTrackerDraft();
+  if (currentPlan) {
+    const input = getFormInput();
+    renderCommandCenter(currentPlan, input);
+  }
+  await saveCampaignProgressToServer();
+}
 
 function resolveCategory(data) {
   const selected = data.get("category")?.toString() || "";
@@ -295,8 +476,22 @@ function maybeResumeWizardDraft() {
   return true;
 }
 
+function populateManualWeekSelect(input) {
+  const sel = document.querySelector("#manualWeek");
+  if (!sel) return;
+  const current = sel.value;
+  const { totalWeeks } = getCampaignWeekInfo(input);
+  const autoOpt = `<option value="">Auto (by days)</option>`;
+  const weekOpts = Array.from({ length: totalWeeks }, (_, i) => {
+    const w = i + 1;
+    return `<option value="${w}">Week ${w}</option>`;
+  }).join("");
+  sel.innerHTML = autoOpt + weekOpts;
+  if (current) sel.value = current;
+}
 function saveTrackerDraft() {
   const key = trackerStorageKey(currentCampaignId);
+  const manualWeek = document.querySelector("#manualWeek")?.value || "";
   try {
     localStorage.setItem(
       key,
@@ -304,6 +499,8 @@ function saveTrackerDraft() {
         savedAt: Date.now(),
         tracker: getTrackerData(),
         learnings: getCloseLearnings(),
+        experimentProgress,
+        manualWeek,
       }),
     );
   } catch {
@@ -329,7 +526,10 @@ function applyTrackerDraft(campaignId) {
     }
     if (data.learnings) {
       const map = {
-        bestHook: data.learnings.bestHook,
+        bestMessage: data.learnings.bestMessage || data.learnings.bestHook,
+        bestCreative: data.learnings.bestCreative,
+        bestOffer: data.learnings.bestOffer,
+        bestHook: data.learnings.bestHook || data.learnings.bestMessage,
         repeatNext: data.learnings.repeat,
         stopDoing: data.learnings.stop,
       };
@@ -337,10 +537,21 @@ function applyTrackerDraft(campaignId) {
         const field = trackerForm.elements.namedItem(key);
         if (field && value != null) field.value = value;
       }
+      if (data.learnings.bestChannel) {
+        const ch = trackerForm.elements.namedItem("bestChannel");
+        if (ch) ch.value = data.learnings.bestChannel;
+      }
       if (data.learnings.topObjection) {
         const sel = trackerForm.elements.namedItem("closeObjection");
         if (sel) sel.value = data.learnings.topObjection;
       }
+    }
+    if (data.experimentProgress) {
+      experimentProgress = { ...data.experimentProgress };
+    }
+    if (data.manualWeek) {
+      const sel = document.querySelector("#manualWeek");
+      if (sel) sel.value = String(data.manualWeek);
     }
     return true;
   } catch {
@@ -589,6 +800,7 @@ function renderBriefAuditTrail(input) {
   const rows = [
     ["Customer", input.audience || "—"],
     ["Goal", input.revenueGoal || "—"],
+    ["North star", NORTH_STAR_LABELS[input.northStarMetric] || input.northStarMetric || "—"],
     ["Product", `${input.product} @ ${input.price}`],
     ["Scope", scopeLabel],
     ["Promo", input.promoHook || "—"],
@@ -1182,6 +1394,7 @@ function getFormInput() {
     brandStage: data.get("brandStage")?.toString().trim() || "",
     pastFailures: data.get("pastFailures")?.toString().trim() || "",
     channels: data.getAll("channels").map((c) => c.toString()),
+    northStarMetric: data.get("northStarMetric")?.toString() || "orders",
     discoveryMode: discoveryMode && !discoveryOverride,
     discoveryOverride,
   };
@@ -1375,6 +1588,7 @@ function applyInputToForm(input) {
     brandStage: input.brandStage,
     pastFailures: input.pastFailures || "",
     goalDays: input.goalDays || "30",
+    northStarMetric: input.northStarMetric || "orders",
   };
 
   for (const [key, value] of Object.entries(map)) {
@@ -1440,8 +1654,14 @@ function getTrackerData() {
 
 function getCloseLearnings() {
   const data = new FormData(trackerForm);
+  const bestMessage = data.get("bestMessage")?.toString().trim() || "";
+  const bestHook = data.get("bestHook")?.toString().trim() || bestMessage;
   return {
-    bestHook: data.get("bestHook")?.toString().trim() || "",
+    bestMessage: bestMessage || bestHook,
+    bestHook: bestHook || bestMessage,
+    bestCreative: data.get("bestCreative")?.toString().trim() || "",
+    bestChannel: data.get("bestChannel")?.toString().trim() || "",
+    bestOffer: data.get("bestOffer")?.toString().trim() || "",
     topObjection: data.get("closeObjection")?.toString() || data.get("topObjection")?.toString().trim() || "",
     repeat: data.get("repeatNext")?.toString().trim() || "",
     stop: data.get("stopDoing")?.toString().trim() || "",
@@ -1694,6 +1914,10 @@ async function runCloseDebriefCoach() {
         finalRevenue: tracker.revenue,
       },
     });
+    if (result.bestMessage) trackerForm.elements.namedItem("bestMessage").value = result.bestMessage;
+    if (result.bestCreative) trackerForm.elements.namedItem("bestCreative").value = result.bestCreative;
+    if (result.bestChannel) trackerForm.elements.namedItem("bestChannel").value = result.bestChannel;
+    if (result.bestOffer) trackerForm.elements.namedItem("bestOffer").value = result.bestOffer;
     if (result.bestHook) trackerForm.elements.namedItem("bestHook").value = result.bestHook;
     if (result.topObjection) {
       const sel = trackerForm.elements.namedItem("closeObjection");
@@ -1876,6 +2100,8 @@ function loadCampaignFromHistory(id, { duplicate = false } = {}) {
   }
 
   currentCampaignId = row.id;
+  loadExperimentProgressFromMetrics(row.metrics || {});
+  populateManualWeekSelect({ ...getFormInput(), ...input });
   renderPlan(plan, { ...getFormInput(), ...input });
 
   const metrics = row.metrics?.tracker;
@@ -1887,16 +2113,35 @@ function loadCampaignFromHistory(id, { duplicate = false } = {}) {
   }
   applyTrackerDraft(row.id);
 
+  const manualWeek = row.metrics?.manualWeek;
+  if (manualWeek) {
+    const sel = document.querySelector("#manualWeek");
+    if (sel) sel.value = String(manualWeek);
+  }
+
   const learnings = row.metrics?.learnings;
   if (learnings) {
     const objectionField = trackerForm.elements.namedItem("closeObjection");
     if (objectionField && learnings.topObjection) objectionField.value = learnings.topObjection;
-    const map = { bestHook: learnings.bestHook, repeatNext: learnings.repeat, stopDoing: learnings.stop };
+    const map = {
+      bestMessage: learnings.bestMessage || learnings.bestHook,
+      bestCreative: learnings.bestCreative,
+      bestOffer: learnings.bestOffer,
+      bestHook: learnings.bestHook || learnings.bestMessage,
+      repeatNext: learnings.repeat,
+      stopDoing: learnings.stop,
+    };
     for (const [key, value] of Object.entries(map)) {
       const field = trackerForm.elements.namedItem(key);
       if (field && value) field.value = value;
     }
+    if (learnings.bestChannel) {
+      const ch = trackerForm.elements.namedItem("bestChannel");
+      if (ch) ch.value = learnings.bestChannel;
+    }
   }
+
+  renderPlanChangesCard(null);
 
   switchView("campaign");
   updateDraftState();
@@ -2007,6 +2252,10 @@ function updateDraftState() {
 
   document.querySelector("#sideGoalBar").style.width = `${currentPlan ? Math.max(8, progress) : 0}%`;
 
+  populateManualWeekSelect(input);
+  renderCampaignWeekUI(input);
+  renderCampaignHealth(input, tracker);
+
   if (!currentPlan) updateCampaignHeader();
   updateInsights();
   if (currentPlan) renderBriefAuditTrail(input);
@@ -2044,6 +2293,8 @@ function normalizePlan(payload) {
 function renderEmptyPlan() {
   currentPlan = null;
   document.querySelector("#briefAuditTrail")?.classList.add("hidden");
+  document.querySelector("#planChangesCard")?.classList.add("hidden");
+  document.querySelector("#campaignWeekChip")?.classList.add("hidden");
   commandCenter.className = "glass-card command-empty";
   commandCenter.innerHTML = `
     <span class="material-symbols-outlined empty-icon">campaign</span>
@@ -2146,9 +2397,22 @@ function renderCommandCenter(plan, input) {
   const diagnosis = plan.diagnosis || [];
   const weeks = plan.weeklyPlan || [];
   const nextActions = plan.nextActions || [];
+  const { currentWeek, totalWeeks } = getCampaignWeekInfo(input);
+  const done = countCompletedExperiments();
+  const totalExp = totalExperimentsInPlan() || 1;
+  const progressPct = Math.round((done / totalExp) * 100);
 
   commandCenter.className = "campaign-console";
   commandCenter.innerHTML = `
+    <div class="glass-card campaign-progress-bar">
+      <div class="campaign-progress-meta">
+        <span><strong>Week ${currentWeek} of ${totalWeeks}</strong></span>
+        <span class="muted">${done}/${totalExp} experiments done</span>
+      </div>
+      <div class="campaign-progress-track">
+        <div class="campaign-progress-fill" style="width:${progressPct}%"></div>
+      </div>
+    </div>
     <div class="glass-card timeline-card">
       <div class="timeline-header">
         <h4>Strategic Milestones</h4>
@@ -2182,12 +2446,24 @@ function renderCommandCenter(plan, input) {
 
 function renderWeekModule(week, index) {
   const experiments = week.experiments || [];
-  const tasks = experiments.slice(0, 2).map((exp) => exp.title || exp.action || "Experiment");
+  const taskRows = experiments
+    .map((exp, expIndex) => {
+      const key = experimentKey(index, expIndex);
+      const done = experimentProgress[key] === true;
+      const label = exp.title || exp.action || "Experiment";
+      return `
+        <div class="week-task-row ${done ? "done" : ""}">
+          <input type="checkbox" data-exp-toggle="${escapeHtml(key)}" ${done ? "checked" : ""} aria-label="Mark experiment done" />
+          <span>${escapeHtml(label)}</span>
+        </div>
+      `;
+    })
+    .join("");
   return `
     <article class="glass-card week-module">
       <span class="week-badge">${escapeHtml(week.week || `Week ${index + 1}`)}</span>
       <h5>${escapeHtml(week.theme || "Growth sprint")}</h5>
-      <ul class="week-tasks">${tasks.map((task) => `<li>${escapeHtml(task)}</li>`).join("")}</ul>
+      <div class="week-tasks">${taskRows || '<p class="muted">No experiments</p>'}</div>
       <button class="week-action" type="button" data-week-index="${index}">View experiments</button>
     </article>
   `;
@@ -2328,7 +2604,9 @@ async function generatePlan() {
 
     if (data.saveResult?.campaign?.id) currentCampaignId = data.saveResult.campaign.id;
 
+    experimentProgress = {};
     renderPlan(data.plan, input);
+    renderPlanChangesCard(data.priorLearnings);
     if (data.usedPriorLearnings) {
       document.querySelector("#campaignProjection").textContent = "AI Projection: informed by last closed campaign";
     }
@@ -2358,7 +2636,7 @@ async function closeCampaign() {
     const response = await fetch("/api/campaigns", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: currentCampaignId, tracker, learnings }),
+      body: JSON.stringify({ action: "close", id: currentCampaignId, tracker, learnings }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Failed to close campaign");
@@ -2469,6 +2747,12 @@ document.addEventListener("keydown", (event) => {
 document.addEventListener("click", async (event) => {
   const viewTrigger = event.target.closest("[data-view]");
   if (viewTrigger?.dataset.view) switchView(viewTrigger.dataset.view);
+
+  const expToggle = event.target.closest("[data-exp-toggle]");
+  if (expToggle) {
+    void toggleExperimentDone(expToggle.dataset.expToggle, expToggle.checked);
+    return;
+  }
 
   if (event.target.closest("[data-week-index]")) {
     openExperimentPanel(Number(event.target.closest("[data-week-index]").dataset.weekIndex));
@@ -2592,11 +2876,28 @@ document.querySelector("#confirmGenerateBtn")?.addEventListener("click", () => v
 document.querySelector("#optimizeBtn")?.addEventListener("click", () => {
   switchView(currentPlan ? "tracker" : "setup");
 });
-document.querySelector("#syncMetrics")?.addEventListener("click", () => {
+document.querySelector("#syncMetrics")?.addEventListener("click", async () => {
   saveTrackerDraft();
   const status = document.querySelector("#trackerSaveStatus");
-  if (status) showStatus(status, "Progress saved on this device.");
+  if (status) showStatus(status, "Saving…");
+  const result = await saveCampaignProgressToServer();
+  if (status) {
+    showStatus(
+      status,
+      result.saved ? "Progress saved to campaign." : result.error || "Saved on this device only.",
+      !result.saved,
+    );
+  }
   updateDraftState();
+});
+document.querySelector("#manualWeek")?.addEventListener("change", () => {
+  scheduleTrackerSave();
+  if (currentPlan) {
+    const input = getFormInput();
+    renderCommandCenter(currentPlan, input);
+    renderCampaignWeekUI(input);
+  }
+  void saveCampaignProgressToServer();
 });
 document.querySelector("#closeCampaignBtn")?.addEventListener("click", () => void closeCampaign());
 document.querySelector("#refreshHistory")?.addEventListener("click", () => void loadCampaignHistory());

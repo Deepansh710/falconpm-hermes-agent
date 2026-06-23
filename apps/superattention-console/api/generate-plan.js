@@ -243,7 +243,10 @@ function buildPrompt(input, priorLearnings = null) {
   const learningsBlock = priorLearnings
     ? `
 Prior closed campaign learnings (use these to improve this plan):
-- Best hook: ${priorLearnings.bestHook || "n/a"}
+- Best message: ${priorLearnings.bestMessage || priorLearnings.bestHook || "n/a"}
+- Best creative: ${priorLearnings.bestCreative || "n/a"}
+- Best channel: ${priorLearnings.bestChannel || "n/a"}
+- Best offer: ${priorLearnings.bestOffer || "n/a"}
 - Top objection: ${priorLearnings.topObjection || "n/a"}
 - Repeat next time: ${priorLearnings.repeat || "n/a"}
 - Stop doing: ${priorLearnings.stop || "n/a"}
@@ -314,6 +317,7 @@ Brand:
 - ${scopeLine}
 - Current monthly revenue: ${input.currentRevenue}
 - Revenue goal (active): ${input.revenueGoal}
+- North-star metric: ${input.northStarMetric || "orders"}
 - Founder entered stretch: ${input.stretchGoal || input.revenueGoal}
 - Recommended goal: ${input.recommendedGoal || "same as revenue goal"}
 - Brand tone: ${input.brandTone}
@@ -665,7 +669,11 @@ async function saveCampaign(input, plan) {
       content_capacity: formatCapacity(input),
       plan_text: JSON.stringify(plan, null, 2),
       input_payload: input,
-      metrics: { status: "live" },
+      metrics: {
+        status: "live",
+        campaignStartedAt: new Date().toISOString(),
+        northStarMetric: input.northStarMetric || "orders",
+      },
     }),
   });
 
@@ -738,6 +746,7 @@ module.exports = async function handler(req, res) {
       plan,
       saveResult,
       usedPriorLearnings: Boolean(priorLearnings),
+      priorLearnings: priorLearnings || null,
     });
   } catch (error) {
     return json(res, 500, {
