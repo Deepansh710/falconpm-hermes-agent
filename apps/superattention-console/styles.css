@@ -1944,6 +1944,11 @@ button {
   }
 }
 
+/* Utility */
+.hidden {
+  display: none !important;
+}
+
 /* V1.1 */
 .form-section-title {
   margin: 24px 0 12px;

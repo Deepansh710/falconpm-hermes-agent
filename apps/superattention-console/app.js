@@ -315,6 +315,7 @@ function showSetupStep(step) {
   document.querySelector("#wizardPrev").classList.toggle("hidden", step === 1);
   document.querySelector("#wizardNext").classList.toggle("hidden", step === 5);
   document.querySelector("#openBriefBtn").classList.toggle("hidden", step !== 5);
+  document.querySelector("#step5Hint")?.classList.toggle("hidden", step !== 5);
   if (step === 4) renderGoalIntelligence();
   updateDraftState();
 }
@@ -1180,10 +1181,26 @@ function updateInsights() {
   renderChartBars();
 }
 
+async function openBriefReview() {
+  const errors = validateStep(5);
+  if (errors.length) {
+    alert(errors.join("\n"));
+    return;
+  }
+  await structureFailures();
+  renderBriefReview();
+  briefPanel.classList.remove("hidden");
+}
+
 async function handleWizardNext() {
   const errors = validateStep(currentSetupStep);
   if (errors.length) {
     alert(errors.join("\n"));
+    return;
+  }
+
+  if (currentSetupStep === 5) {
+    await openBriefReview();
     return;
   }
 
@@ -1295,16 +1312,7 @@ document.querySelector("#forcePlanBtn")?.addEventListener("click", () => {
 });
 
 document.querySelector("#structureFailuresBtn")?.addEventListener("click", () => void structureFailures());
-document.querySelector("#openBriefBtn")?.addEventListener("click", async () => {
-  const errors = validateStep(5);
-  if (errors.length) {
-    alert(errors.join("\n"));
-    return;
-  }
-  await structureFailures();
-  renderBriefReview();
-  briefPanel.classList.remove("hidden");
-});
+document.querySelector("#openBriefBtn")?.addEventListener("click", () => void openBriefReview());
 document.querySelector("#confirmGenerateBtn")?.addEventListener("click", () => void generatePlan());
 
 document.querySelector("#optimizeBtn")?.addEventListener("click", () => {
