@@ -60,6 +60,233 @@ let coachApplyField = "audience";
 let highestSetupStep = 1;
 let goalCoachCache = "";
 
+const CATEGORY_OPTIONS = new Set([
+  "Homemade Indian pickles",
+  "Snacks & namkeen",
+  "Spices & masalas",
+  "Sweets & mithai",
+  "Health & wellness D2C",
+  "Beauty & skincare D2C",
+  "Fashion & accessories D2C",
+  "Home & kitchen D2C",
+]);
+
+function resolveCategory(data) {
+  const selected = data.get("category")?.toString() || "";
+  if (selected === "__custom") {
+    return data.get("categoryCustom")?.toString().trim() || "";
+  }
+  return selected.trim();
+}
+
+function syncCategorySelect() {
+  const select = document.querySelector("#categorySelect");
+  const custom = document.querySelector("#categoryCustom");
+  if (!select || !custom) return;
+  const val = select.value;
+  const showCustom = val === "__custom";
+  custom.classList.toggle("hidden", !showCustom);
+  if (showCustom) custom.required = true;
+  else custom.required = false;
+}
+
+function sanitizeOfferDraft(draft, input) {
+  if (!draft) return draft;
+  const priceNum = parseNumber(input.price);
+  const clean = { ...draft };
+  const scrub = (text) => {
+    if (!text || !priceNum) return text;
+    return String(text).replace(/Rs\.?\s*[\d,]+/gi, (match) => {
+      const n = parseNumber(match);
+      return n && n !== priceNum ? input.price : match;
+    });
+  };
+  if (clean.productBundle) clean.productBundle = scrub(clean.productBundle);
+  if (clean.clearVersion) clean.clearVersion = scrub(clean.clearVersion);
+  if (clean.promoHook) clean.promoHook = scrub(clean.promoHook);
+  return clean;
+}
+
+function buildGoalNarrative(intel, input) {
+  const rec = compactGoal(intel.recommendedGoalString);
+  const stretch = compactGoal(buildRevenueGoalString(intel.stretch, input.goalDays));
+  const activeRec = input.goalChoice === "recommended";
+
+  if (intel.isAbsurd) {
+    return `Your entered goal (${stretch}) is a big jump. Start with ${rec} (~${intel.recommendedOrdersPerWeek} orders/week on WhatsApp). Prove repeat orders before scaling.`;
+  }
+  if (activeRec) {
+    return `Active plan goal: ${rec} (~${intel.recommendedOrdersPerWeek} orders/week). You entered ${stretch} — switch to "Use my number" if you want the plan built for that instead.`;
+  }
+  return `Active plan goal: ${stretch} (~${intel.stretchOrdersPerWeek} orders/week). Recommended safer target: ${rec} (~${intel.recommendedOrdersPerWeek} orders/week).`;
+}
+
+function allowedExperimentTypes(channels = []) {
+  const allowed = new Set();
+  for (const ch of channels) {
+    const c = String(ch).toLowerCase();
+    if (c.includes("reel")) allowed.add("reel");
+    if (c.includes("whatsapp")) allowed.add("whatsapp");
+    if (c.includes("website")) allowed.add("website");
+    if (c.includes("linkedin")) allowed.add("linkedin");
+    if (c.includes("email")) allowed.add("email");
+  }
+  return allowed;
+}
+
+function normalizeExperimentType(type = "") {
+  const t = String(type).toLowerCase();
+  if (t.includes("reel")) return "reel";
+  if (t.includes("whatsapp")) return "whatsapp";
+  if (t.includes("website")) return "website";
+  if (t.includes("linkedin")) return "linkedin";
+  if (t.includes("email")) return "email";
+  return t;
+}
+
+function isEmptyExpField(value) {
+  const t = (value || "").trim();
+  return !t || t === "—" || t === "-";
+}
+
+function enrichWhatsappPackClient(wa, input, weekIndex) {
+  const area = input.deliveryArea || input.whereLive || "your delivery area";
+  const price = input.price || "";
+  const product = input.product || "product";
+  const promo = input.promoHook || "";
+  const bundle = input.productBundle || input.offer || product;
+  const baseMessage =
+    wa.message ||
+    `Hi! I make ${bundle} at ${price}. ${promo ? `${promo}. ` : ""}Reply YES to order in ${area}.`;
+
+  return {
+    title: wa.title || `Week ${weekIndex + 1} broadcast`,
+    message: baseMessage,
+    photoBrief:
+      wa.photoBrief ||
+      `1 clear photo: ${product} jar, natural light, optional plate of food. No text on image.`,
+    whoToMessage:
+      wa.whoToMessage || `20–30 warm contacts in ${area} (friends, neighbours, past buyers)`,
+    sendTime: wa.sendTime || "Tue or Wed, 7–9pm",
+    replyScript:
+      wa.replyScript ||
+      `If price: remind ${price} and ${promo || "quality"}. If trust: offer founder delivery.`,
+    metric: wa.metric || "Reply rate and orders placed",
+  };
+}
+
+function normalizePlanClient(plan, input) {
+  if (!plan || typeof plan !== "object") return plan;
+  const allowed = allowedExperimentTypes(input.channels || []);
+  const reels = plan.contentAssets?.reels || [];
+  let whatsapp = (plan.contentAssets?.whatsapp || []).map((wa, i) =>
+    enrichWhatsappPackClient(wa, input, i),
+  );
+
+  if (!plan.contentAssets) plan.contentAssets = {};
+  plan.contentAssets.whatsapp = whatsapp;
+  if (!allowed.has("website")) plan.contentAssets.website = [];
+  if (!allowed.has("linkedin")) plan.contentAssets.linkedin = [];
+  if (!allowed.has("reel")) plan.contentAssets.reels = [];
+  if (!allowed.has("whatsapp")) plan.contentAssets.whatsapp = [];
+
+  const priceNum = parseNumber(input.price);
+  if (priceNum && plan.contentAssets.whatsapp) {
+    plan.contentAssets.whatsapp = plan.contentAssets.whatsapp.map((wa) => {
+      let message = wa.message || "";
+      const wrongPrices = message.match(/Rs\.?\s*[\d,]+/gi) || [];
+      for (const match of wrongPrices) {
+        const n = parseNumber(match);
+        if (n && n !== priceNum) message = message.replace(match, input.price);
+      }
+      return { ...wa, message };
+    });
+  }
+
+  plan.weeklyPlan = (plan.weeklyPlan || []).map((week, weekIndex) => {
+    const waPack = enrichWhatsappPackClient(whatsapp[weekIndex] || whatsapp[0] || {}, input, weekIndex);
+    const reelAsset = reels[weekIndex] || reels[weekIndex % Math.max(reels.length, 1)] || {};
+
+    let experiments = (week.experiments || []).map((exp) => {
+      const kind = normalizeExperimentType(exp.type);
+      if (kind === "reel" && (isEmptyExpField(exp.why) || isEmptyExpField(exp.action))) {
+        const hook = reelAsset.hook || reelAsset.script || "";
+        return {
+          ...exp,
+          why: isEmptyExpField(exp.why)
+            ? `Reels build trust with ${(input.audience || "your buyer").slice(0, 60)}.`
+            : exp.why,
+          action: isEmptyExpField(exp.action)
+            ? hook
+              ? `Film 30s Reel: ${hook}`
+              : `Film 30s Reel featuring ${input.product}.`
+            : exp.action,
+          cta: isEmptyExpField(exp.cta) ? reelAsset.cta || input.promoHook || "Order on WhatsApp" : exp.cta,
+          metric: isEmptyExpField(exp.metric) ? "Saves and WhatsApp DMs" : exp.metric,
+          decisionRule: isEmptyExpField(exp.decisionRule)
+            ? "If 3+ saves or DMs, repeat this hook next week."
+            : exp.decisionRule,
+        };
+      }
+      if (kind === "whatsapp") {
+        return {
+          ...exp,
+          why: isEmptyExpField(exp.why) ? "Warm contacts convert faster than cold outreach." : exp.why,
+          action: isEmptyExpField(exp.action)
+            ? `Send exact message below to: ${waPack.whoToMessage}`
+            : exp.action,
+          message: exp.message || waPack.message,
+          photoBrief: exp.photoBrief || waPack.photoBrief,
+          whoToMessage: exp.whoToMessage || waPack.whoToMessage,
+          sendTime: exp.sendTime || waPack.sendTime,
+          replyScript: exp.replyScript || waPack.replyScript,
+          cta: isEmptyExpField(exp.cta) ? waPack.message.slice(0, 100) : exp.cta,
+          metric: isEmptyExpField(exp.metric) ? waPack.metric : exp.metric,
+          decisionRule: isEmptyExpField(exp.decisionRule)
+            ? "Under 2 replies? Send a personal voice note on day 3."
+            : exp.decisionRule,
+        };
+      }
+      return exp;
+    }).filter((exp) => {
+      const kind = normalizeExperimentType(exp.type);
+      return kind === "offer" || allowed.has(kind);
+    });
+
+    if (allowed.has("whatsapp") && !experiments.some((e) => normalizeExperimentType(e.type) === "whatsapp")) {
+      experiments.push({
+        type: "WhatsApp",
+        title: waPack.title,
+        why: "Warm contacts convert faster than cold outreach.",
+        action: `Send exact message below to: ${waPack.whoToMessage}`,
+        message: waPack.message,
+        photoBrief: waPack.photoBrief,
+        whoToMessage: waPack.whoToMessage,
+        sendTime: waPack.sendTime,
+        replyScript: waPack.replyScript,
+        cta: waPack.message.slice(0, 100),
+        metric: waPack.metric,
+        decisionRule: "Under 2 replies? Send a personal voice note on day 3.",
+      });
+    }
+    if (allowed.has("reel") && !experiments.some((e) => normalizeExperimentType(e.type) === "reel")) {
+      experiments.push({
+        type: "Reel",
+        title: reelAsset.title || "Reel",
+        why: `Reels build trust with ${(input.audience || "your buyer").slice(0, 40)}.`,
+        action: reelAsset.script || `Film 30s Reel featuring ${input.product}.`,
+        cta: reelAsset.cta || input.promoHook || "Order on WhatsApp",
+        metric: "Saves and DMs",
+        decisionRule: "If 3+ saves, repeat hook next week.",
+      });
+    }
+
+    return { ...week, experiments: experiments.slice(0, 2) };
+  });
+
+  return plan;
+}
+
 const VAGUE_PATTERN = /\b(everyone|all india|anyone|everybody|anybody)\b/i;
 const JUNK_PATTERN = /\b(don'?t know|not sure|no idea|right\s*now)\b/i;
 
@@ -98,6 +325,8 @@ function isJunkText(text) {
 }
 
 function openCoachModal(result, applyField) {
+  const input = getFormInput();
+  if (applyField === "offer") result = sanitizeOfferDraft(result, input);
   pendingCoachDraft = result;
   coachApplyField = applyField;
   document.querySelector("#coachFounderText").textContent =
@@ -168,11 +397,12 @@ function applyCoachClearVersion() {
   } else if (coachApplyField === "brandDifferentiation") {
     generatorForm.elements.namedItem("brandDifferentiation").value = clear;
   } else if (coachApplyField === "offer") {
-    if (pendingCoachDraft.productBundle) {
-      generatorForm.elements.namedItem("productBundle").value = pendingCoachDraft.productBundle;
+    const safe = sanitizeOfferDraft(pendingCoachDraft, getFormInput());
+    if (safe.productBundle) {
+      generatorForm.elements.namedItem("productBundle").value = safe.productBundle;
     }
-    if (pendingCoachDraft.promoHook != null) {
-      generatorForm.elements.namedItem("promoHook").value = pendingCoachDraft.promoHook;
+    if (safe.promoHook != null) {
+      generatorForm.elements.namedItem("promoHook").value = safe.promoHook;
     }
   }
   coachPanel.classList.add("hidden");
@@ -284,12 +514,12 @@ function needsDiscovery(answers) {
 
 function computeGoalIntelligence(input) {
   const current = parseNumber(input.currentRevenue);
-  const stretch = parseNumber(input.goalAmount);
+  const stretch = parseNumber(input.stretchGoalAmount ?? input.goalAmount);
   const days = parseNumber(input.goalDays) || 30;
   const price = parseNumber(input.price);
-  const ordersNeeded = price && stretch ? Math.ceil(stretch / price) : 0;
+  const stretchOrders = price && stretch ? Math.ceil(stretch / price) : 0;
   const weeks = Math.max(days / 7, 1);
-  const ordersPerWeek = Math.ceil(ordersNeeded / weeks);
+  const stretchOrdersPerWeek = Math.ceil(stretchOrders / weeks);
 
   let recommended = stretch;
   const stage = input.brandStage || "";
@@ -307,54 +537,68 @@ function computeGoalIntelligence(input) {
   recommended = Math.round(recommended / 500) * 500;
   if (!recommended) recommended = Math.min(stretch, 10000);
 
+  const recommendedOrders = price && recommended ? Math.ceil(recommended / price) : 0;
+  const recommendedOrdersPerWeek = Math.ceil(recommendedOrders / weeks);
+
   const base = Math.max(current, 1000);
   const ratio = stretch / base;
   const isAggressive = ratio > 4 || (current < 1000 && stretch > 15000);
   const isAbsurd = ratio > 15 || (current < 1000 && stretch >= 50000);
 
-  let explanation = `You need about ${ordersNeeded} orders in ${days} days (~${ordersPerWeek}/week) at ${input.price || "your price"}.`;
+  const activeOrders = input.goalChoice === "stretch" ? stretchOrders : recommendedOrders;
+  const activePerWeek =
+    input.goalChoice === "stretch" ? stretchOrdersPerWeek : recommendedOrdersPerWeek;
+
+  let explanation = `You entered ${formatRupee(stretch)} in ${days} days = ~${stretchOrders} orders (~${stretchOrdersPerWeek}/week) at ${input.price || "your price"}.`;
+  if (input.goalChoice === "recommended") {
+    explanation += ` Recommended safer target: ${formatRupee(recommended)} (~${recommendedOrdersPerWeek} orders/week).`;
+  }
   if (isAbsurd) {
-    explanation += " That jump is very large for your current sales — start smaller and prove repeat orders first.";
-  } else if (isAggressive) {
-    explanation += " This is a stretch — we'll phase the plan if you choose it.";
+    explanation += " That jump is very large — start with recommended first.";
+  } else if (isAggressive && input.goalChoice === "stretch") {
+    explanation += " Stretch selected — plan may split into prove-then-scale phases.";
   }
 
   return {
     recommended,
     stretch,
-    ordersNeeded,
-    ordersPerWeek,
+    recommendedOrders,
+    stretchOrders,
+    recommendedOrdersPerWeek,
+    stretchOrdersPerWeek,
+    ordersNeeded: activeOrders,
+    ordersPerWeek: activePerWeek,
     isAggressive,
     isAbsurd,
     explanation,
     recommendedGoalString: buildRevenueGoalString(recommended, days),
+    stretchGoalString: buildRevenueGoalString(stretch, days),
   };
 }
 
 function getFormInput() {
   const data = new FormData(generatorForm);
-  const goalAmount = data.get("goalChoice") === "recommended"
-    ? String(computeGoalIntelligence({
-        currentRevenue: formatRupee(parseNumber(data.get("currentRevenue"))),
-        goalAmount: data.get("goalAmount"),
-        goalDays: data.get("goalDays"),
-        brandStage: data.get("brandStage"),
-        price: formatRupee(parseNumber(data.get("price"))),
-      }).recommended)
-    : data.get("goalAmount")?.toString().trim() || "";
-
+  const stretchGoalAmount = data.get("goalAmount")?.toString().trim() || "";
   const goalDays = data.get("goalDays")?.toString().trim() || "30";
+  const goalChoice = data.get("goalChoice")?.toString() || "recommended";
   const priceRaw = data.get("price")?.toString().trim() || "";
   const revenueRaw = data.get("currentRevenue")?.toString().trim() || "";
-  const productBundle = data.get("productBundle")?.toString().trim() || data.get("offer")?.toString().trim() || "";
-  const promoHook = data.get("promoHook")?.toString().trim() || "";
+
   const goalIntel = computeGoalIntelligence({
     currentRevenue: formatRupee(parseNumber(revenueRaw)),
-    goalAmount: data.get("goalAmount"),
+    stretchGoalAmount,
+    goalAmount: stretchGoalAmount,
     goalDays,
     brandStage: data.get("brandStage")?.toString() || "",
     price: formatRupee(parseNumber(priceRaw)),
+    goalChoice,
   });
+
+  const activeGoalAmount =
+    goalChoice === "recommended" ? String(goalIntel.recommended) : stretchGoalAmount;
+
+  const productBundle = data.get("productBundle")?.toString().trim() || data.get("offer")?.toString().trim() || "";
+  const promoHook = data.get("promoHook")?.toString().trim() || "";
 
   const reelsPerWeek = data.get("reelsPerWeek")?.toString() || "2";
   const whatsappBroadcasts = data.get("whatsappBroadcasts")?.toString() || "yes";
@@ -368,11 +612,9 @@ function getFormInput() {
   const audience = data.get("audience")?.toString().trim() || "";
   const hesitationLabel = data.get("hesitationLabel")?.toString().trim() || data.get("hesitation")?.toString() || "";
 
-  const goalChoice = data.get("goalChoice")?.toString() || "recommended";
-
   return {
     brandName: data.get("brandName")?.toString().trim() || "",
-    category: data.get("category")?.toString().trim() || "",
+    category: resolveCategory(data),
     product: data.get("product")?.toString().trim() || "",
     price: formatRupee(parseNumber(priceRaw)),
     productBundle,
@@ -386,8 +628,10 @@ function getFormInput() {
     hesitationLabel,
     audienceConfidence: data.get("audienceConfidence")?.toString() || "",
     currentRevenue: formatRupee(parseNumber(revenueRaw)),
-    revenueGoal: buildRevenueGoalString(goalAmount, goalDays),
-    goalAmount,
+    revenueGoal: buildRevenueGoalString(activeGoalAmount, goalDays),
+    goalAmount: activeGoalAmount,
+    stretchGoalAmount,
+    stretchGoal: buildRevenueGoalString(stretchGoalAmount, goalDays),
     goalDays,
     goalChoice,
     recommendedGoal: goalIntel.recommendedGoalString,
@@ -477,14 +721,27 @@ function renderGoalIntelligence() {
   const narrativeEl = document.querySelector("#goalCoachNarrative");
   const channelWarn = document.querySelector("#channelWarning");
   const capacityWarn = document.querySelector("#capacityWarning");
+  const enteredNote = document.querySelector("#goalEnteredNote");
+  const activeNote = document.querySelector("#goalActiveNote");
 
   summary.textContent = intel.explanation;
-  document.querySelector("#recommendedGoalLabel").textContent = `Recommended: ${compactGoal(intel.recommendedGoalString)}`;
-  document.querySelector("#recommendedGoalNote").textContent = "Safer target based on your stage and revenue.";
-  document.querySelector("#stretchGoalLabel").textContent = `Your target: ${compactGoal(buildRevenueGoalString(intel.stretch, input.goalDays))}`;
-  document.querySelector("#stretchGoalNote").textContent = `${intel.ordersNeeded} orders (~${intel.ordersPerWeek}/week).`;
+  if (enteredNote) {
+    enteredNote.textContent = `You entered: ${compactGoal(intel.stretchGoalString)} (~${intel.stretchOrdersPerWeek} orders/week)`;
+  }
+  if (activeNote) {
+    const activeLabel =
+      input.goalChoice === "recommended"
+        ? `Recommended (safer): ${compactGoal(intel.recommendedGoalString)}`
+        : `Your number: ${compactGoal(intel.stretchGoalString)}`;
+    activeNote.textContent = `Active goal for your plan: ${activeLabel} (~${intel.ordersPerWeek} orders/week)`;
+  }
 
-  warn.classList.toggle("hidden", !intel.isAggressive);
+  document.querySelector("#recommendedGoalLabel").textContent = `Recommended (safer): ${compactGoal(intel.recommendedGoalString)}`;
+  document.querySelector("#recommendedGoalNote").textContent = `${intel.recommendedOrders} orders (~${intel.recommendedOrdersPerWeek}/week).`;
+  document.querySelector("#stretchGoalLabel").textContent = `Use my number: ${compactGoal(intel.stretchGoalString)}`;
+  document.querySelector("#stretchGoalNote").textContent = `${intel.stretchOrders} orders (~${intel.stretchOrdersPerWeek}/week).`;
+
+  warn.classList.toggle("hidden", !intel.isAggressive || input.goalChoice !== "stretch");
   if (intel.isAbsurd) {
     warn.textContent =
       "This goal is a big jump from where you are. We strongly recommend starting with the recommended goal.";
@@ -492,23 +749,8 @@ function renderGoalIntelligence() {
     warn.textContent = "Stretch goal selected — your plan will split Phase 1 (prove it) and Phase 2 (scale).";
   }
 
-  const localNarrative = intel.isAbsurd
-    ? `Start with ${compactGoal(intel.recommendedGoalString)} first. Prove ${intel.ordersPerWeek} orders/week is possible on WhatsApp before chasing the bigger number.`
-    : intel.isAggressive
-      ? `Recommended ${compactGoal(intel.recommendedGoalString)} is your proof phase. Stretch needs ~${intel.ordersPerWeek} orders/week — focus on WhatsApp replies and 1–2 Reels.`
-      : `Aim for ~${intel.ordersPerWeek} orders per week. Lead with WhatsApp + Reels — don't add more channels yet.`;
-
-  narrativeEl.textContent = goalCoachCache || localNarrative;
-
-  void (async () => {
-    try {
-      const result = await callCoach("goal_coach", { input, intel });
-      goalCoachCache = result.narrative || localNarrative;
-      narrativeEl.textContent = goalCoachCache;
-    } catch {
-      narrativeEl.textContent = localNarrative;
-    }
-  })();
+  narrativeEl.textContent = buildGoalNarrative(intel, input);
+  goalCoachCache = narrativeEl.textContent;
 
   const stage = input.brandStage || "";
   const channelCount = input.channels.length;
@@ -543,7 +785,6 @@ function renderGoalIntelligence() {
 function applyInputToForm(input) {
   const map = {
     brandName: input.brandName,
-    category: input.category,
     product: input.product,
     productBundle: input.productBundle || input.offer,
     promoHook: input.promoHook || "",
@@ -573,6 +814,20 @@ function applyInputToForm(input) {
   for (const [key, value] of Object.entries(map)) {
     const field = generatorForm.elements.namedItem(key);
     if (field && value != null) field.value = value;
+  }
+
+  const categorySelect = document.querySelector("#categorySelect");
+  const categoryCustom = document.querySelector("#categoryCustom");
+  const cat = input.category || "";
+  if (categorySelect) {
+    if (CATEGORY_OPTIONS.has(cat)) {
+      categorySelect.value = cat;
+      if (categoryCustom) categoryCustom.value = "";
+    } else if (cat) {
+      categorySelect.value = "__custom";
+      if (categoryCustom) categoryCustom.value = cat;
+    }
+    syncCategorySelect();
   }
 
   const priceField = generatorForm.elements.namedItem("price");
@@ -886,8 +1141,9 @@ function renderBriefReview() {
     <div class="brief-review-block"><span class="label">Different</span><p>${escapeHtml(input.brandDifferentiation || "—")}</p></div>
     <div class="brief-review-block"><span class="label">Product</span><p>${escapeHtml(input.productBundle)}</p></div>
     <div class="brief-review-block"><span class="label">Promo hook</span><p>${escapeHtml(input.promoHook || "None")}</p></div>
-    <div class="brief-review-block"><span class="label">Goal</span><p>${escapeHtml(input.revenueGoal)} ${input.goalChoice === "stretch" && intel.isAggressive ? "(phased plan)" : ""}</p></div>
-    <div class="brief-review-block"><span class="label">Goal coach</span><p>${escapeHtml(goalCoachCache || intel.explanation)}</p></div>
+    <div class="brief-review-block"><span class="label">Goal (active)</span><p>${escapeHtml(input.revenueGoal)} ${input.goalChoice === "stretch" && intel.isAggressive ? "(phased plan)" : ""}</p></div>
+    <div class="brief-review-block"><span class="label">You entered</span><p>${escapeHtml(input.stretchGoal || input.revenueGoal)}</p></div>
+    <div class="brief-review-block"><span class="label">Goal coach</span><p>${escapeHtml(goalCoachCache || buildGoalNarrative(intel, input))}</p></div>
     <div class="brief-review-block"><span class="label">Capacity</span><p>${escapeHtml(input.contentCapacity)}</p></div>
     <div class="brief-review-block"><span class="label">Channels</span><p>${escapeHtml(input.channels.join(", "))}</p></div>
   `;
@@ -1109,8 +1365,10 @@ function updateDraftState() {
   document.querySelector("#sideGoalValue").textContent = compactGoal(input.revenueGoal);
 
   const tipParts = [];
-  if (intel.isAbsurd) tipParts.push(`₹${parseNumber(input.goalAmount).toLocaleString("en-IN")} is a big jump — recommended ${compactGoal(intel.recommendedGoalString)}.`);
-  else if (intel.ordersPerWeek) tipParts.push(`Need ~${intel.ordersPerWeek} orders/week.`);
+  if (input.goalChoice === "recommended" && parseNumber(input.stretchGoalAmount) !== parseNumber(input.goalAmount)) {
+    tipParts.push(`Plan uses recommended ${compactGoal(input.revenueGoal)} (you entered ${compactGoal(input.stretchGoal)}).`);
+  }
+  if (intel.ordersPerWeek) tipParts.push(`~${intel.ordersPerWeek} orders/week on active goal.`);
   if (input.promoHook) tipParts.push(`Promo: ${input.promoHook.slice(0, 40)}…`);
   document.querySelector("#sideGoalTip").textContent = tipParts.length
     ? tipParts.join(" ")
@@ -1217,7 +1475,7 @@ function assetTags(input) {
 }
 
 function renderPlan(plan, input) {
-  currentPlan = normalizePlan(plan);
+  currentPlan = normalizePlanClient(normalizePlan(plan), input);
   const summary = currentPlan.summary || {};
 
   document.querySelector("#campaignProductName").textContent = `${input.product} campaign`;
@@ -1243,6 +1501,18 @@ function renderPlan(plan, input) {
 }
 
 function renderExperimentDetail(exp) {
+  const isWa = normalizeExperimentType(exp.type) === "whatsapp";
+  const waExtra = isWa
+    ? `
+        <div><dt>Exact message</dt><dd class="wa-message-block">${escapeHtml(exp.message || "—")}</dd></div>
+        <div><dt>Photo to share</dt><dd>${escapeHtml(exp.photoBrief || "—")}</dd></div>
+        <div><dt>Who to message</dt><dd>${escapeHtml(exp.whoToMessage || "—")}</dd></div>
+        <div><dt>When to send</dt><dd>${escapeHtml(exp.sendTime || "—")}</dd></div>
+        <div><dt>If they hesitate</dt><dd>${escapeHtml(exp.replyScript || "—")}</dd></div>
+        ${exp.message ? `<button class="copy-btn small" data-copy-text="${escapeHtml(exp.message)}" type="button">Copy message</button>` : ""}
+      `
+    : "";
+
   return `
     <article class="experiment-detail">
       <div class="experiment-detail-head">
@@ -1252,6 +1522,7 @@ function renderExperimentDetail(exp) {
       <dl>
         <div><dt>Why</dt><dd>${escapeHtml(exp.why || "—")}</dd></div>
         <div><dt>Action</dt><dd>${escapeHtml(exp.action || "—")}</dd></div>
+        ${waExtra}
         <div><dt>CTA</dt><dd>${escapeHtml(exp.cta || "—")}</dd></div>
         <div><dt>Metric</dt><dd>${escapeHtml(exp.metric || "—")}</dd></div>
         <div><dt>Decision rule</dt><dd>${escapeHtml(exp.decisionRule || "—")}</dd></div>
@@ -1328,10 +1599,13 @@ function renderWeekModule(week, index) {
 
 function renderContentStudio(contentAssets, input) {
   const tags = assetTags(input);
-  const reels = contentAssets.reels || [];
-  const whatsapp = contentAssets.whatsapp || [];
+  const allowed = allowedExperimentTypes(input.channels || []);
+  const reels = allowed.has("reel") ? contentAssets.reels || [] : [];
+  const whatsapp = allowed.has("whatsapp") ? contentAssets.whatsapp || [] : [];
+  const website = allowed.has("website") ? contentAssets.website || [] : [];
+  const linkedin = allowed.has("linkedin") ? contentAssets.linkedin || [] : [];
 
-  if (!reels.length && !whatsapp.length) {
+  if (!reels.length && !whatsapp.length && !website.length && !linkedin.length) {
     contentBento.innerHTML = `<div class="glass-card empty-studio"><h3>No assets returned</h3></div>`;
     return;
   }
@@ -1340,8 +1614,8 @@ function renderContentStudio(contentAssets, input) {
     ${tags ? `<div class="asset-tags-row">${tags}</div>` : ""}
     ${reels.length ? renderReelsCard(reels, tags) : ""}
     ${whatsapp.length ? renderWhatsappCard(whatsapp, tags) : ""}
-    ${(contentAssets.website || []).length ? renderWebsiteCard(contentAssets.website, input) : ""}
-    ${(contentAssets.linkedin || []).length ? renderLinkedinCard(contentAssets.linkedin) : ""}
+    ${website.length ? renderWebsiteCard(website, input) : ""}
+    ${linkedin.length ? renderLinkedinCard(linkedin) : ""}
   `;
 }
 
@@ -1369,16 +1643,28 @@ function renderReelsCard(reels, tags) {
 }
 
 function renderWhatsappCard(messages, tags) {
-  const first = messages[0] || {};
-  const text = first.message || "";
-  return `
-    <div class="glass-card content-card whatsapp">
-      <div class="content-card-header"><h4>WhatsApp Broadcast</h4></div>
+  const packs = (messages || []).slice(0, 2);
+  if (!packs.length) return "";
+
+  return packs
+    .map((pack) => {
+      const text = pack.message || "";
+      return `
+    <div class="glass-card content-card whatsapp wa-pack-card">
+      <div class="content-card-header"><h4>${escapeHtml(pack.title || "WhatsApp Broadcast")}</h4></div>
       ${tags ? `<div class="asset-tags-inline">${tags}</div>` : ""}
+      <dl class="wa-pack-dl">
+        <div><dt>Who to message</dt><dd>${escapeHtml(pack.whoToMessage || "—")}</dd></div>
+        <div><dt>When</dt><dd>${escapeHtml(pack.sendTime || "—")}</dd></div>
+        <div><dt>Photo</dt><dd>${escapeHtml(pack.photoBrief || "—")}</dd></div>
+      </dl>
       <p class="message-block">"${escapeHtml(text)}"</p>
-      <button class="copy-btn" data-copy-text="${escapeHtml(text)}" type="button">Copy Text</button>
+      <p class="field-hint">If they hesitate: ${escapeHtml(pack.replyScript || "—")}</p>
+      <button class="copy-btn" data-copy-text="${escapeHtml(text)}" type="button">Copy message</button>
     </div>
   `;
+    })
+    .join("");
 }
 
 function renderWebsiteCard(pages, input) {
@@ -1679,6 +1965,16 @@ generatorForm.addEventListener("input", () => {
   if (currentSetupStep === 4) renderGoalIntelligence();
   updateDraftState();
 });
+document.querySelector("#categorySelect")?.addEventListener("change", () => {
+  syncCategorySelect();
+  updateDraftState();
+});
+generatorForm.querySelectorAll('input[name="goalChoice"]').forEach((radio) => {
+  radio.addEventListener("change", () => {
+    if (currentSetupStep === 4) renderGoalIntelligence();
+    updateDraftState();
+  });
+});
 generatorForm.addEventListener("submit", (e) => e.preventDefault());
 trackerForm.addEventListener("input", () => {
   updateDraftState();
@@ -1687,6 +1983,7 @@ trackerForm.addEventListener("input", () => {
 
 renderEmptyPlan();
 showSetupStep(1);
+syncCategorySelect();
 syncToneChipsFromInput();
 updateDraftState();
 setRingProgress(0);

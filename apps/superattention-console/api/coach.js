@@ -182,11 +182,13 @@ Return ONLY valid JSON:
 }
 
 function offerDraftPrompt(input, answers) {
+  const bundle = answers.bundleDetail || input.productBundle || input.product || "";
   return `Help an Indian D2C founder describe product bundle and promo hook.
 
 Brand: ${input.brandName}
 Product: ${input.product}
-Price: ${input.price}
+Price (LOCKED — use exactly this, never change): ${input.price}
+Product bundle from form: ${bundle}
 
 Founder answers:
 - What's in the jar/box: ${answers.bundleDetail || ""}
@@ -194,12 +196,17 @@ Founder answers:
 - Why order now: ${answers.promoWhy || ""}
 - Promo type: ${answers.promoType || ""}
 
+RULES:
+- NEVER invent price, weight (gm/kg), or jar size not stated above.
+- productBundle must only rephrase what founder provided — no new numbers.
+- promoHook can suggest delivery/sample/urgency but no fake discounts.
+
 Return ONLY valid JSON:
 {
-  "productBundle": "what customer gets for the price",
+  "productBundle": "what customer gets — use founder words only",
   "promoHook": "delivery/discount/sample/urgency hook or empty",
   "founderSummary": "one line summary",
-  "clearVersion": "bundle + promo in plain English for brief review"
+  "clearVersion": "bundle + promo in plain English"
 }`;
 }
 
@@ -207,18 +214,26 @@ function goalCoachPrompt(input, intel) {
   return `Write a plain-English goal coach note for an early Indian D2C founder.
 
 Current monthly revenue: ${input.currentRevenue}
-Stretch goal: ${input.revenueGoal}
+Founder entered stretch: ${input.stretchGoal || input.revenueGoal}
 Recommended goal: ${intel.recommendedGoalString || ""}
-Brand stage: ${input.brandStage}
-Orders needed: ${intel.ordersNeeded}
-Orders per week: ${intel.ordersPerWeek}
+Active plan goal: ${input.revenueGoal}
+Brand stage: ${input.brandStage || "not specified"}
+Recommended orders needed: ${intel.recommendedOrders ?? intel.ordersNeeded}
+Stretch orders needed: ${intel.stretchOrders ?? intel.ordersNeeded}
+Recommended orders/week: ${intel.recommendedOrdersPerWeek ?? intel.ordersPerWeek}
+Stretch orders/week: ${intel.stretchOrdersPerWeek ?? intel.ordersPerWeek}
 Is aggressive: ${intel.isAggressive}
 Is absurd: ${intel.isAbsurd}
 
+RULES:
+- Use ONLY the numbers above. NEVER invent micro-goals like Rs. 100 or 1 order unless they match the numbers.
+- Explain recommended vs stretch in plain words.
+- Focus first on WhatsApp + Reels.
+
 Return ONLY valid JSON:
 {
-  "narrative": "3-4 short sentences: what recommended means, what stretch requires, what to focus on first (WhatsApp + Reels). Plain words.",
-  "weeklyFocus": "one sentence on weekly order/WhatsApp target"
+  "narrative": "3-4 short sentences using exact goal amounts from above",
+  "weeklyFocus": "one sentence on weekly order target using numbers above"
 }`;
 }
 
