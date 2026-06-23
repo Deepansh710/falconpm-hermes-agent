@@ -140,6 +140,109 @@ Return ONLY valid JSON:
 }`;
 }
 
+function missionDraftPrompt(input, answers) {
+  return `Help an Indian D2C founder write their brand mission in plain English.
+
+Brand: ${input.brandName}
+Product: ${input.product}
+Category: ${input.category}
+
+Founder answers:
+- Why they started: ${answers.whyStarted || ""}
+- Emotional moment: ${answers.emotionalMoment || ""}
+- How customer should feel: ${answers.customerFeel || ""}
+
+Return ONLY valid JSON:
+{
+  "founderSummary": "their words combined",
+  "clearVersion": "2-3 sentences: why brand exists emotionally — specific not generic",
+  "isSubstantive": true
+}
+
+If answers are empty or 'don't know', set isSubstantive false and clearVersion to empty string.
+Keep strings under 280 chars. No markdown.`;
+}
+
+function differentiationDraftPrompt(input, answers) {
+  return `Help an Indian D2C founder state what makes them different.
+
+Brand: ${input.brandName}
+Product: ${input.product}
+
+Founder answers:
+- What they can prove: ${answers.provable || ""}
+- What customers say: ${answers.customerSays || ""}
+- Competitors cannot copy: ${answers.cannotCopy || ""}
+
+Return ONLY valid JSON:
+{
+  "founderSummary": "bullets combined",
+  "clearVersion": "2-3 sentences of real differentiation — no generic claims"
+}`;
+}
+
+function offerDraftPrompt(input, answers) {
+  return `Help an Indian D2C founder describe product bundle and promo hook.
+
+Brand: ${input.brandName}
+Product: ${input.product}
+Price: ${input.price}
+
+Founder answers:
+- What's in the jar/box: ${answers.bundleDetail || ""}
+- Size/variant: ${answers.sizeVariant || ""}
+- Why order now: ${answers.promoWhy || ""}
+- Promo type: ${answers.promoType || ""}
+
+Return ONLY valid JSON:
+{
+  "productBundle": "what customer gets for the price",
+  "promoHook": "delivery/discount/sample/urgency hook or empty",
+  "founderSummary": "one line summary",
+  "clearVersion": "bundle + promo in plain English for brief review"
+}`;
+}
+
+function goalCoachPrompt(input, intel) {
+  return `Write a plain-English goal coach note for an early Indian D2C founder.
+
+Current monthly revenue: ${input.currentRevenue}
+Stretch goal: ${input.revenueGoal}
+Recommended goal: ${intel.recommendedGoalString || ""}
+Brand stage: ${input.brandStage}
+Orders needed: ${intel.ordersNeeded}
+Orders per week: ${intel.ordersPerWeek}
+Is aggressive: ${intel.isAggressive}
+Is absurd: ${intel.isAbsurd}
+
+Return ONLY valid JSON:
+{
+  "narrative": "3-4 short sentences: what recommended means, what stretch requires, what to focus on first (WhatsApp + Reels). Plain words.",
+  "weeklyFocus": "one sentence on weekly order/WhatsApp target"
+}`;
+}
+
+function closeDebriefPrompt(input, learnings) {
+  return `Structure campaign close learnings for next growth plan.
+
+Brand: ${input.brandName}
+Best hook: ${learnings.bestHook || ""}
+Top objection: ${learnings.topObjection || ""}
+Repeat: ${learnings.repeat || ""}
+Stop: ${learnings.stop || ""}
+Final orders: ${learnings.finalOrders ?? ""}
+Final revenue: ${learnings.finalRevenue ?? ""}
+
+Return ONLY valid JSON:
+{
+  "summary": "2 sentences what worked and what to change",
+  "bestHook": "refined best hook",
+  "topObjection": "refined objection",
+  "repeat": "what to repeat",
+  "stop": "what to stop"
+}`;
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return json(res, 405, { error: "Method not allowed" });
@@ -147,7 +250,7 @@ module.exports = async function handler(req, res) {
 
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-    const { action, input, answers, findings, checklist } = body;
+    const { action, input, answers, findings, checklist, learnings, intel } = body;
 
     if (!action) {
       return json(res, 400, { error: "action is required" });
@@ -174,6 +277,31 @@ module.exports = async function handler(req, res) {
       }
       case "failure_debrief": {
         text = await requestAnthropic(failureDebriefPrompt(input, checklist || {}));
+        result = parseJsonResponse(text);
+        break;
+      }
+      case "mission_draft": {
+        text = await requestAnthropic(missionDraftPrompt(input, answers || {}));
+        result = parseJsonResponse(text);
+        break;
+      }
+      case "differentiation_draft": {
+        text = await requestAnthropic(differentiationDraftPrompt(input, answers || {}));
+        result = parseJsonResponse(text);
+        break;
+      }
+      case "offer_draft": {
+        text = await requestAnthropic(offerDraftPrompt(input, answers || {}));
+        result = parseJsonResponse(text);
+        break;
+      }
+      case "goal_coach": {
+        text = await requestAnthropic(goalCoachPrompt(input, intel || {}));
+        result = parseJsonResponse(text);
+        break;
+      }
+      case "close_debrief": {
+        text = await requestAnthropic(closeDebriefPrompt(input, learnings || {}));
         result = parseJsonResponse(text);
         break;
       }

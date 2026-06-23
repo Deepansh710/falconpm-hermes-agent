@@ -56,9 +56,149 @@ let currentSetupStep = 1;
 let discoveryMode = false;
 let discoveryOverride = false;
 let pendingCoachDraft = null;
-let lastTraceTags = { promo: "", hesitation: "" };
+let coachApplyField = "audience";
+let highestSetupStep = 1;
+let goalCoachCache = "";
 
 const VAGUE_PATTERN = /\b(everyone|all india|anyone|everybody|anybody)\b/i;
+const JUNK_PATTERN = /\b(don'?t know|not sure|no idea|right\s*now)\b/i;
+
+function setButtonLoading(btn, loading, loadingLabel = "Loading…") {
+  if (!btn) return;
+  if (loading) {
+    if (!btn.dataset.defaultLabel) btn.dataset.defaultLabel = btn.textContent.trim();
+    btn.classList.add("is-loading");
+    btn.disabled = true;
+    btn.innerHTML = `<span class="material-symbols-outlined spin btn-spin" aria-hidden="true">sync</span> ${escapeHtml(loadingLabel)}`;
+  } else {
+    btn.classList.remove("is-loading");
+    btn.disabled = false;
+    btn.textContent = btn.dataset.defaultLabel || btn.textContent;
+  }
+}
+
+function showStatus(el, message, isError = false) {
+  if (!el) return;
+  el.textContent = message || "";
+  el.classList.toggle("hidden", !message);
+  el.classList.toggle("inline-error", Boolean(message && isError));
+}
+
+function setCoachPanelLoading(loading) {
+  document.querySelector("#coachLoading")?.classList.toggle("hidden", !loading);
+  document.querySelector("#coachCompareBody")?.classList.toggle("hidden", loading);
+  document.querySelector(".coach-panel-actions")?.classList.toggle("hidden", loading);
+}
+
+function isJunkText(text) {
+  const t = (text || "").trim();
+  if (t.length < 20) return true;
+  if (JUNK_PATTERN.test(t) && t.length < 80) return true;
+  return false;
+}
+
+function openCoachModal(result, applyField) {
+  pendingCoachDraft = result;
+  coachApplyField = applyField;
+  document.querySelector("#coachFounderText").textContent =
+    result.founderSummary || result.clearVersion || "";
+  const clearText =
+    result.clearVersion ||
+    (result.productBundle
+      ? `${result.productBundle}${result.promoHook ? ` — ${result.promoHook}` : ""}`
+      : "");
+  document.querySelector("#coachClearText").textContent = clearText;
+  setCoachPanelLoading(false);
+  coachPanel.classList.remove("hidden");
+}
+
+function applyCoachFounderVersion() {
+  if (!pendingCoachDraft) return;
+  if (coachApplyField === "audience") {
+    generatorForm.elements.namedItem("audience").value = pendingCoachDraft.founderSummary || "";
+  } else if (coachApplyField === "brandMission") {
+    generatorForm.elements.namedItem("brandMission").value = pendingCoachDraft.founderSummary || "";
+  } else if (coachApplyField === "brandDifferentiation") {
+    generatorForm.elements.namedItem("brandDifferentiation").value = pendingCoachDraft.founderSummary || "";
+  }
+  coachPanel.classList.add("hidden");
+  updateDraftState();
+}
+
+function syncToneChipsFromInput() {
+  const toneField = generatorForm.elements.namedItem("brandTone");
+  const selected = (toneField?.value || "")
+    .toLowerCase()
+    .split(/[,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  document.querySelectorAll(".tone-chip").forEach((chip) => {
+    chip.classList.toggle("active", selected.includes(chip.dataset.tone || ""));
+  });
+}
+
+function toggleToneChip(chip) {
+  const tone = chip.dataset.tone;
+  if (!tone) return;
+  const toneField = generatorForm.elements.namedItem("brandTone");
+  const selected = new Set(
+    (toneField?.value || "")
+      .toLowerCase()
+      .split(/[,;]+/)
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  if (selected.has(tone)) selected.delete(tone);
+  else selected.add(tone);
+  if (toneField) toneField.value = [...selected].join(", ");
+  syncToneChipsFromInput();
+  updateDraftState();
+}
+
+function applyCoachClearVersion() {
+  if (!pendingCoachDraft) return;
+  const clear = pendingCoachDraft.clearVersion || "";
+  if (coachApplyField === "audience") {
+    generatorForm.elements.namedItem("audience").value = clear;
+    if (pendingCoachDraft.hesitationLabel) {
+      generatorForm.elements.namedItem("hesitationLabel").value = pendingCoachDraft.hesitationLabel;
+    }
+  } else if (coachApplyField === "brandMission") {
+    generatorForm.elements.namedItem("brandMission").value = clear;
+  } else if (coachApplyField === "brandDifferentiation") {
+    generatorForm.elements.namedItem("brandDifferentiation").value = clear;
+  } else if (coachApplyField === "offer") {
+    if (pendingCoachDraft.productBundle) {
+      generatorForm.elements.namedItem("productBundle").value = pendingCoachDraft.productBundle;
+    }
+    if (pendingCoachDraft.promoHook != null) {
+      generatorForm.elements.namedItem("promoHook").value = pendingCoachDraft.promoHook;
+    }
+  }
+  coachPanel.classList.add("hidden");
+  updateDraftState();
+}
+
+function toggleUnsure(fieldName) {
+  const input = generatorForm.elements.namedItem(fieldName);
+  const hidden = generatorForm.elements.namedItem(`${fieldName}Unsure`);
+  const toggle = generatorForm.querySelector(`[data-unsure-for="${fieldName}"]`);
+  const block = generatorForm.querySelector(`.audience-field[data-field="${fieldName}"]`);
+  const active = hidden?.value === "1";
+  if (hidden) hidden.value = active ? "" : "1";
+  if (input) {
+    if (!active) {
+      input.dataset.prevValue = input.value;
+      input.value = "";
+      input.disabled = true;
+    } else {
+      input.disabled = false;
+      input.value = input.dataset.prevValue || "";
+    }
+  }
+  toggle?.classList.toggle("active", !active);
+  block?.classList.toggle("is-unsure", !active);
+}
 
 function escapeHtml(value = "") {
   return String(value)
@@ -120,14 +260,14 @@ function buildContentCapacity(input) {
 
 function getAudienceAnswers() {
   const data = new FormData(generatorForm);
-  const val = (name, unsureName) => {
-    if (data.get(unsureName) === "on") return "not_sure";
+  const val = (name) => {
+    if (data.get(`${name}Unsure`) === "1") return "not_sure";
     return data.get(name)?.toString().trim() || "";
   };
   return {
-    whoBuys: val("whoBuys", "whoBuysUnsure"),
-    whereLive: val("whereLive", "whereLiveUnsure"),
-    substitute: val("substitute", "substituteUnsure"),
+    whoBuys: val("whoBuys"),
+    whereLive: val("whereLive"),
+    substitute: val("substitute"),
     hesitation: data.get("hesitation")?.toString() || "",
     confidence: data.get("audienceConfidence")?.toString() || "",
   };
@@ -296,26 +436,36 @@ function validateStep(step) {
     if (!data.getAll("channels").length) errors.push("Select at least one channel.");
   }
   if (step === 5) {
-    if ((data.get("brandMission")?.toString().trim() || "").length < 20) {
-      errors.push("Brand mission: 20+ characters.");
+    const mission = data.get("brandMission")?.toString().trim() || "";
+    if (isJunkText(mission)) {
+      errors.push("Mission needs real substance — tap Help me write my mission or write 2–3 honest sentences.");
+    }
+    if ((data.get("brandDifferentiation")?.toString().trim() || "").length < 10) {
+      errors.push("Differentiation: 10+ characters or use the coach.");
     }
     if (!data.get("brandStage")) errors.push("Select your brand stage.");
   }
+  showStatus(document.querySelector("#wizardStepError"), errors[0] || "", true);
   return errors;
 }
 
 function showSetupStep(step) {
   currentSetupStep = step;
+  highestSetupStep = Math.max(highestSetupStep, step);
   generatorForm.querySelectorAll("[data-setup-step]").forEach((el) => {
     el.classList.toggle("hidden", Number(el.dataset.setupStep) !== step);
   });
   document.querySelectorAll("#setupWizardNav .wizard-step").forEach((btn) => {
-    btn.classList.toggle("active", Number(btn.dataset.step) === step);
+    const n = Number(btn.dataset.step);
+    btn.classList.toggle("active", n === step);
+    btn.classList.toggle("completed", n < step);
   });
   document.querySelector("#wizardPrev").classList.toggle("hidden", step === 1);
   document.querySelector("#wizardNext").classList.toggle("hidden", step === 5);
   document.querySelector("#openBriefBtn").classList.toggle("hidden", step !== 5);
-  if (step === 4) renderGoalIntelligence();
+  document.querySelector("#step5Hint")?.classList.toggle("hidden", step !== 5);
+  showStatus(document.querySelector("#wizardStepError"), "");
+  if (step === 4) void renderGoalIntelligence();
   updateDraftState();
 }
 
@@ -324,6 +474,9 @@ function renderGoalIntelligence() {
   const intel = computeGoalIntelligence(input);
   const summary = document.querySelector("#goalIntelSummary");
   const warn = document.querySelector("#goalWarning");
+  const narrativeEl = document.querySelector("#goalCoachNarrative");
+  const channelWarn = document.querySelector("#channelWarning");
+  const capacityWarn = document.querySelector("#capacityWarning");
 
   summary.textContent = intel.explanation;
   document.querySelector("#recommendedGoalLabel").textContent = `Recommended: ${compactGoal(intel.recommendedGoalString)}`;
@@ -337,6 +490,50 @@ function renderGoalIntelligence() {
       "This goal is a big jump from where you are. We strongly recommend starting with the recommended goal.";
   } else if (intel.isAggressive) {
     warn.textContent = "Stretch goal selected — your plan will split Phase 1 (prove it) and Phase 2 (scale).";
+  }
+
+  const localNarrative = intel.isAbsurd
+    ? `Start with ${compactGoal(intel.recommendedGoalString)} first. Prove ${intel.ordersPerWeek} orders/week is possible on WhatsApp before chasing the bigger number.`
+    : intel.isAggressive
+      ? `Recommended ${compactGoal(intel.recommendedGoalString)} is your proof phase. Stretch needs ~${intel.ordersPerWeek} orders/week — focus on WhatsApp replies and 1–2 Reels.`
+      : `Aim for ~${intel.ordersPerWeek} orders per week. Lead with WhatsApp + Reels — don't add more channels yet.`;
+
+  narrativeEl.textContent = goalCoachCache || localNarrative;
+
+  void (async () => {
+    try {
+      const result = await callCoach("goal_coach", { input, intel });
+      goalCoachCache = result.narrative || localNarrative;
+      narrativeEl.textContent = goalCoachCache;
+    } catch {
+      narrativeEl.textContent = localNarrative;
+    }
+  })();
+
+  const stage = input.brandStage || "";
+  const channelCount = input.channels.length;
+  if ((stage.includes("First sales") || stage.includes("Idea")) && channelCount > 2) {
+    channelWarn.textContent = "Early stage: pick 2 channels max. WhatsApp + Reels usually work best.";
+    channelWarn.classList.remove("hidden");
+    channelWarn.classList.add("warn");
+  } else {
+    channelWarn.classList.add("hidden");
+    channelWarn.classList.remove("warn");
+  }
+
+  const reels = parseNumber(input.reelsPerWeek);
+  const hours = parseNumber(input.hoursPerWeek);
+  if (reels >= 4 && hours <= 3) {
+    capacityWarn.textContent = "4+ Reels/week is hard in ~3 hours — consider 1–2 Reels + WhatsApp.";
+    capacityWarn.classList.remove("hidden");
+    capacityWarn.classList.add("warn");
+  } else if (reels >= 6) {
+    capacityWarn.textContent = "6 Reels/week is a lot for a solo founder — be honest or plan will fail.";
+    capacityWarn.classList.remove("hidden");
+    capacityWarn.classList.add("warn");
+  } else {
+    capacityWarn.classList.add("hidden");
+    capacityWarn.classList.remove("warn");
   }
 
   const capField = generatorForm.elements.namedItem("contentCapacity");
@@ -394,6 +591,7 @@ function applyInputToForm(input) {
 
   discoveryMode = Boolean(input.discoveryMode);
   discoveryOverride = Boolean(input.discoveryOverride);
+  syncToneChipsFromInput();
 }
 
 function getTrackerData() {
@@ -438,23 +636,110 @@ async function runAudienceCoach() {
   const input = getFormInput();
   const answers = getAudienceAnswers();
   const status = document.querySelector("#audienceCoachStatus");
-  status.textContent = "Writing a clear version…";
+  const btn = document.querySelector("#coachAudienceBtn");
 
   try {
     if (needsDiscovery(answers)) {
       await openDiscoveryWeek();
-      status.textContent = "Discovery Week opened — do the checklist first.";
+      showStatus(status, "Discovery Week opened — do the checklist first.");
       return;
     }
 
-    const result = await callCoach("audience_draft", { input, answers });
-    pendingCoachDraft = result;
-    document.querySelector("#coachFounderText").textContent = result.founderSummary || "";
-    document.querySelector("#coachClearText").textContent = result.clearVersion || "";
+    setButtonLoading(btn, true, "Writing…");
     coachPanel.classList.remove("hidden");
-    status.textContent = "Review the clear version below.";
+    setCoachPanelLoading(true);
+    const result = await callCoach("audience_draft", { input, answers });
+    openCoachModal(result, "audience");
+    showStatus(status, "Review the clear version in the popup.");
   } catch (error) {
-    status.textContent = error.message;
+    showStatus(status, error.message, true);
+    coachPanel.classList.add("hidden");
+  } finally {
+    setButtonLoading(btn, false);
+  }
+}
+
+async function runMissionCoach() {
+  const input = getFormInput();
+  const data = new FormData(generatorForm);
+  const btn = document.querySelector("#coachMissionBtn");
+  const status = document.querySelector("#missionCoachStatus");
+  const answers = {
+    whyStarted: data.get("missionWhyStarted")?.toString() || "",
+    emotionalMoment: data.get("missionEmotional")?.toString() || "",
+    customerFeel: data.get("missionCustomerFeel")?.toString() || "",
+  };
+
+  try {
+    setButtonLoading(btn, true, "Writing…");
+    coachPanel.classList.remove("hidden");
+    setCoachPanelLoading(true);
+    const result = await callCoach("mission_draft", { input, answers });
+    if (result.isSubstantive === false || !result.clearVersion) {
+      coachPanel.classList.add("hidden");
+      showStatus(status, "Add rough notes above or use Discovery Week — we won't invent a fake mission.", true);
+      return;
+    }
+    openCoachModal(result, "brandMission");
+    showStatus(status, "Mission draft ready — pick clear version if it fits.");
+  } catch (error) {
+    showStatus(status, error.message, true);
+    coachPanel.classList.add("hidden");
+  } finally {
+    setButtonLoading(btn, false);
+  }
+}
+
+async function runDiffCoach() {
+  const input = getFormInput();
+  const data = new FormData(generatorForm);
+  const btn = document.querySelector("#coachDiffBtn");
+  const status = document.querySelector("#diffCoachStatus");
+  const answers = {
+    provable: data.get("diffProvable")?.toString() || "",
+    customerSays: data.get("diffCustomerSays")?.toString() || "",
+    cannotCopy: data.get("diffCannotCopy")?.toString() || "",
+  };
+
+  try {
+    setButtonLoading(btn, true, "Writing…");
+    coachPanel.classList.remove("hidden");
+    setCoachPanelLoading(true);
+    const result = await callCoach("differentiation_draft", { input, answers });
+    openCoachModal(result, "brandDifferentiation");
+    showStatus(status, "Differentiation draft ready.");
+  } catch (error) {
+    showStatus(status, error.message, true);
+    coachPanel.classList.add("hidden");
+  } finally {
+    setButtonLoading(btn, false);
+  }
+}
+
+async function runOfferCoach() {
+  const input = getFormInput();
+  const data = new FormData(generatorForm);
+  const btn = document.querySelector("#coachOfferBtn");
+  const status = document.querySelector("#offerCoachStatus");
+  const answers = {
+    bundleDetail: data.get("productBundle")?.toString() || data.get("offerBundleDetail")?.toString() || "",
+    sizeVariant: data.get("offerSizeVariant")?.toString() || "",
+    promoWhy: data.get("promoHook")?.toString() || data.get("offerPromoWhy")?.toString() || "",
+    promoType: data.get("offerPromoType")?.toString() || "",
+  };
+
+  try {
+    setButtonLoading(btn, true, "Building…");
+    coachPanel.classList.remove("hidden");
+    setCoachPanelLoading(true);
+    const result = await callCoach("offer_draft", { input, answers });
+    openCoachModal(result, "offer");
+    showStatus(status, "Offer draft ready — promo will show in WhatsApp & Reels.");
+  } catch (error) {
+    showStatus(status, error.message, true);
+    coachPanel.classList.add("hidden");
+  } finally {
+    setButtonLoading(btn, false);
   }
 }
 
@@ -462,9 +747,15 @@ async function openDiscoveryWeek() {
   const input = getFormInput();
   discoveryMode = true;
   localStorage.setItem(`sa_discovery_${input.brandName}`, JSON.stringify({ discoveryMode: true }));
-  document.querySelector("#discoveryStatus").textContent = "Building your 1-week checklist…";
+  const status = document.querySelector("#discoveryStatus");
+  const btn = document.querySelector("#startDiscoveryBtn");
+  showStatus(status, "Building your 1-week checklist…");
 
   try {
+    setButtonLoading(btn, true, "Building…");
+    discoveryPanel.classList.remove("hidden");
+    document.querySelector("#discoveryTasks").innerHTML =
+      '<p class="coach-loading"><span class="material-symbols-outlined spin">sync</span> Creating tasks…</p>';
     const result = await callCoach("discovery_week", { input });
     document.querySelector("#discoveryIntro").textContent = result.intro || "";
     document.querySelector("#discoveryTasks").innerHTML = (result.tasks || [])
@@ -482,9 +773,11 @@ async function openDiscoveryWeek() {
     document.querySelector("#discoveryWhatsapp").textContent = result.interimWhatsapp || "";
     document.querySelector("#discoveryReel").textContent = result.interimReelIdea || "";
     discoveryPanel.classList.remove("hidden");
-    document.querySelector("#discoveryStatus").textContent = "";
+    showStatus(status, "");
   } catch (error) {
-    document.querySelector("#discoveryStatus").textContent = error.message;
+    showStatus(status, error.message, true);
+  } finally {
+    setButtonLoading(btn, false);
   }
 }
 
@@ -497,9 +790,11 @@ async function synthesizeDiscovery() {
     hesitationFound: document.querySelector("#hesitationFound").value,
   };
   const status = document.querySelector("#discoveryStatus");
-  status.textContent = "Turning your notes into a customer summary…";
+  const btn = document.querySelector("#synthesizeDiscoveryBtn");
+  showStatus(status, "Turning your notes into a customer summary…");
 
   try {
+    setButtonLoading(btn, true, "Saving…");
     const result = await callCoach("discovery_synthesize", { input, findings });
     generatorForm.elements.namedItem("audience").value = result.audience || "";
     generatorForm.elements.namedItem("hesitationLabel").value = result.hesitationLabel || "";
@@ -507,12 +802,14 @@ async function synthesizeDiscovery() {
     discoveryOverride = false;
     localStorage.removeItem(`sa_discovery_${input.brandName}`);
     discoveryPanel.classList.add("hidden");
-    status.textContent = result.confidenceNote || "Customer summary saved.";
+    showStatus(status, result.confidenceNote || "Customer summary saved.");
     document.querySelector("#audienceCoachStatus").textContent =
       "Nice — you talked to real people. That's real data.";
     showSetupStep(3);
   } catch (error) {
-    status.textContent = error.message;
+    showStatus(status, error.message, true);
+  } finally {
+    setButtonLoading(btn, false);
   }
 }
 
@@ -527,7 +824,9 @@ async function structureFailures() {
   };
   if (!checklist.channel && !checklist.outcome) return;
 
+  const btn = document.querySelector("#structureFailuresBtn");
   try {
+    setButtonLoading(btn, true, "Writing…");
     const result = await callCoach("failure_debrief", { input, checklist });
     generatorForm.elements.namedItem("pastFailures").value = result.pastFailures || "";
   } catch {
@@ -538,6 +837,43 @@ async function structureFailures() {
     ]
       .filter(Boolean)
       .join(". ");
+  } finally {
+    setButtonLoading(btn, false);
+  }
+}
+
+async function runCloseDebriefCoach() {
+  const input = getFormInput();
+  const tracker = getTrackerData();
+  const learnings = getCloseLearnings();
+  const btn = document.querySelector("#coachCloseBtn");
+  const status = document.querySelector("#closeCampaignStatus");
+
+  try {
+    setButtonLoading(btn, true, "Writing…");
+    const result = await callCoach("close_debrief", {
+      input,
+      learnings: {
+        ...learnings,
+        finalOrders: tracker.orders,
+        finalRevenue: tracker.revenue,
+      },
+    });
+    if (result.bestHook) trackerForm.elements.namedItem("bestHook").value = result.bestHook;
+    if (result.topObjection) {
+      const sel = trackerForm.elements.namedItem("closeObjection");
+      const match = [...sel.options].find((o) => o.value === result.topObjection);
+      if (match) sel.value = result.topObjection;
+      else trackerForm.elements.namedItem("topObjection").value = result.topObjection;
+    }
+    if (result.repeat) trackerForm.elements.namedItem("repeatNext").value = result.repeat;
+    if (result.stop) trackerForm.elements.namedItem("stopDoing").value = result.stop;
+    showStatus(status, result.summary || "Learnings drafted — edit if needed, then close campaign.");
+    updateDraftState();
+  } catch (error) {
+    showStatus(status, error.message, true);
+  } finally {
+    setButtonLoading(btn, false);
   }
 }
 
@@ -546,9 +882,12 @@ function renderBriefReview() {
   const intel = computeGoalIntelligence(input);
   document.querySelector("#briefReview").innerHTML = `
     <div class="brief-review-block"><span class="label">Customer</span><p>${escapeHtml(input.audience || "—")}</p></div>
+    <div class="brief-review-block"><span class="label">Mission</span><p>${escapeHtml(input.brandMission || "—")}</p></div>
+    <div class="brief-review-block"><span class="label">Different</span><p>${escapeHtml(input.brandDifferentiation || "—")}</p></div>
     <div class="brief-review-block"><span class="label">Product</span><p>${escapeHtml(input.productBundle)}</p></div>
     <div class="brief-review-block"><span class="label">Promo hook</span><p>${escapeHtml(input.promoHook || "None")}</p></div>
     <div class="brief-review-block"><span class="label">Goal</span><p>${escapeHtml(input.revenueGoal)} ${input.goalChoice === "stretch" && intel.isAggressive ? "(phased plan)" : ""}</p></div>
+    <div class="brief-review-block"><span class="label">Goal coach</span><p>${escapeHtml(goalCoachCache || intel.explanation)}</p></div>
     <div class="brief-review-block"><span class="label">Capacity</span><p>${escapeHtml(input.contentCapacity)}</p></div>
     <div class="brief-review-block"><span class="label">Channels</span><p>${escapeHtml(input.channels.join(", "))}</p></div>
   `;
@@ -837,6 +1176,7 @@ function fillSample() {
   discoveryMode = false;
   renderEmptyPlan();
   showSetupStep(1);
+  syncToneChipsFromInput();
   updateDraftState();
   switchView("setup");
 }
@@ -873,7 +1213,6 @@ function assetTags(input) {
   const tags = [];
   if (input.promoHook) tags.push(`Uses offer: ${input.promoHook}`);
   if (input.hesitationLabel) tags.push(`Targets: ${input.hesitationLabel} hesitation`);
-  lastTraceTags = { promo: input.promoHook, hesitation: input.hesitationLabel };
   return tags.map((t) => `<span class="asset-tag">${escapeHtml(t)}</span>`).join("");
 }
 
@@ -1065,18 +1404,21 @@ function renderLinkedinCard(posts) {
 
 async function generatePlan() {
   const input = getFormInput();
+  const genBtn = document.querySelector("#confirmGenerateBtn");
+  const briefStatus = document.querySelector("#briefGenerateStatus");
 
   if (input.discoveryMode) {
-    alert("Finish Discovery Week first, or use Build plan anyway.");
+    showStatus(briefStatus, "Finish Discovery Week first, or use Build plan anyway.", true);
     return;
   }
 
   updateDraftState();
   switchView("campaign");
   briefPanel.classList.add("hidden");
+  setButtonLoading(genBtn, true, "Generating plan…");
   commandCenter.className = "glass-card command-empty loading-state";
   commandCenter.innerHTML = `
-    <span class="material-symbols-outlined empty-icon">sync</span>
+    <span class="material-symbols-outlined empty-icon spin">sync</span>
     <h3>Building your growth system...</h3>
     <p>Creating weekly sprints and content for ${escapeHtml(input.product)}.</p>
   `;
@@ -1100,19 +1442,24 @@ async function generatePlan() {
   } catch (error) {
     commandCenter.className = "glass-card command-empty error-state";
     commandCenter.innerHTML = `<h3>Generation failed</h3><p>${escapeHtml(error.message)}</p>`;
+    showStatus(briefStatus, error.message, true);
+  } finally {
+    setButtonLoading(genBtn, false);
   }
 }
 
 async function closeCampaign() {
   const statusEl = document.querySelector("#closeCampaignStatus");
+  const btn = document.querySelector("#closeCampaignBtn");
   if (!currentCampaignId) {
-    statusEl.textContent = "Generate or load a campaign first.";
+    showStatus(statusEl, "Generate or load a campaign first.", true);
     return;
   }
   const tracker = getTrackerData();
   const learnings = getCloseLearnings();
-  statusEl.textContent = "Saving learnings…";
+  showStatus(statusEl, "Saving learnings…");
   try {
+    setButtonLoading(btn, true, "Saving…");
     const response = await fetch("/api/campaigns", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -1120,11 +1467,13 @@ async function closeCampaign() {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Failed to close campaign");
-    statusEl.textContent = "Campaign closed. Next plan will use these learnings.";
+    showStatus(statusEl, "Campaign closed. Next plan will use these learnings.");
     await loadCampaignHistory();
     updateDraftState();
   } catch (error) {
-    statusEl.textContent = error.message;
+    showStatus(statusEl, error.message, true);
+  } finally {
+    setButtonLoading(btn, false);
   }
 }
 
@@ -1180,10 +1529,20 @@ function updateInsights() {
   renderChartBars();
 }
 
+async function openBriefReview() {
+  const errors = validateStep(5);
+  if (errors.length) return;
+  await structureFailures();
+  renderBriefReview();
+  briefPanel.classList.remove("hidden");
+}
+
 async function handleWizardNext() {
   const errors = validateStep(currentSetupStep);
-  if (errors.length) {
-    alert(errors.join("\n"));
+  if (errors.length) return;
+
+  if (currentSetupStep === 5) {
+    await openBriefReview();
     return;
   }
 
@@ -1268,19 +1627,20 @@ document.querySelectorAll("#setupWizardNav .wizard-step").forEach((btn) => {
 });
 
 document.querySelector("#coachAudienceBtn")?.addEventListener("click", () => void runAudienceCoach());
-document.querySelector("#useClearAudience")?.addEventListener("click", () => {
-  if (pendingCoachDraft) {
-    generatorForm.elements.namedItem("audience").value = pendingCoachDraft.clearVersion || "";
-    generatorForm.elements.namedItem("hesitationLabel").value = pendingCoachDraft.hesitationLabel || "";
-  }
-  coachPanel.classList.add("hidden");
-  document.querySelector("#audienceCoachStatus").textContent = "Saved clear version.";
+document.querySelector("#coachMissionBtn")?.addEventListener("click", () => void runMissionCoach());
+document.querySelector("#coachDiffBtn")?.addEventListener("click", () => void runDiffCoach());
+document.querySelector("#coachOfferBtn")?.addEventListener("click", () => void runOfferCoach());
+document.querySelector("#startDiscoveryBtn")?.addEventListener("click", () => void openDiscoveryWeek());
+document.querySelector("#coachCloseBtn")?.addEventListener("click", () => void runCloseDebriefCoach());
+document.querySelector("#useClearAudience")?.addEventListener("click", () => applyCoachClearVersion());
+document.querySelector("#useFounderAudience")?.addEventListener("click", () => applyCoachFounderVersion());
+
+document.querySelectorAll(".not-sure-toggle").forEach((btn) => {
+  btn.addEventListener("click", () => toggleUnsure(btn.dataset.unsureFor));
 });
-document.querySelector("#useFounderAudience")?.addEventListener("click", () => {
-  if (pendingCoachDraft) {
-    generatorForm.elements.namedItem("audience").value = pendingCoachDraft.founderSummary || "";
-  }
-  coachPanel.classList.add("hidden");
+
+document.querySelectorAll(".tone-chip").forEach((chip) => {
+  chip.addEventListener("click", () => toggleToneChip(chip));
 });
 
 document.querySelector("#showDiscoveryReturn")?.addEventListener("click", () => {
@@ -1295,16 +1655,7 @@ document.querySelector("#forcePlanBtn")?.addEventListener("click", () => {
 });
 
 document.querySelector("#structureFailuresBtn")?.addEventListener("click", () => void structureFailures());
-document.querySelector("#openBriefBtn")?.addEventListener("click", async () => {
-  const errors = validateStep(5);
-  if (errors.length) {
-    alert(errors.join("\n"));
-    return;
-  }
-  await structureFailures();
-  renderBriefReview();
-  briefPanel.classList.remove("hidden");
-});
+document.querySelector("#openBriefBtn")?.addEventListener("click", () => void openBriefReview());
 document.querySelector("#confirmGenerateBtn")?.addEventListener("click", () => void generatePlan());
 
 document.querySelector("#optimizeBtn")?.addEventListener("click", () => {
@@ -1336,6 +1687,7 @@ trackerForm.addEventListener("input", () => {
 
 renderEmptyPlan();
 showSetupStep(1);
+syncToneChipsFromInput();
 updateDraftState();
 setRingProgress(0);
 void loadCampaignHistory();

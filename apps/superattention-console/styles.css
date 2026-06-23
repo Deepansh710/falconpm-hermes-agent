@@ -1944,6 +1944,11 @@ button {
   }
 }
 
+/* Utility */
+.hidden {
+  display: none !important;
+}
+
 /* V1.1 */
 .form-section-title {
   margin: 24px 0 12px;
@@ -2414,4 +2419,134 @@ button {
   color: var(--primary);
   font-size: 11px;
   font-weight: 600;
+}
+
+/* V1.3 — loading, coaches, polish */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin,
+.btn-spin {
+  animation: spin 1s linear infinite;
+}
+
+.btn.is-loading,
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-ghost:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-ghost {
+  min-height: 44px;
+}
+
+.wizard-step.completed {
+  border-color: rgba(188, 255, 95, 0.35);
+  color: var(--secondary);
+}
+
+.wizard-step.completed::after {
+  content: " ✓";
+  font-size: 11px;
+}
+
+.not-sure-toggle {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  min-height: 44px;
+  line-height: 44px;
+}
+
+.not-sure-toggle:hover,
+.not-sure-toggle.active {
+  color: var(--tertiary);
+}
+
+.audience-field.is-unsure input {
+  opacity: 0.45;
+  background: var(--surface-container-lowest);
+}
+
+.coach-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 16px;
+  color: var(--on-surface-variant);
+  text-align: center;
+}
+
+.coach-loading .material-symbols-outlined {
+  font-size: 36px;
+  color: var(--primary);
+}
+
+.loading-state .empty-icon.spin {
+  opacity: 1;
+  animation: spin 1.2s linear infinite;
+}
+
+.inline-error {
+  color: var(--error);
+}
+
+.goal-coach-narrative {
+  margin-top: 12px;
+  padding: 12px;
+  border-left: 3px solid rgba(188, 255, 95, 0.5);
+  background: rgba(188, 255, 95, 0.04);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.tone-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.tone-chip {
+  padding: 8px 14px;
+  min-height: 44px;
+  border: 1px solid rgba(70, 69, 84, 0.4);
+  border-radius: 999px;
+  background: var(--surface-container-low);
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tone-chip.active {
+  border-color: rgba(192, 193, 255, 0.55);
+  background: rgba(192, 193, 255, 0.15);
+  color: var(--primary);
+}
+
+#channelWarning.warn,
+#capacityWarning.warn {
+  color: var(--tertiary);
+  margin-top: 8px;
 }
