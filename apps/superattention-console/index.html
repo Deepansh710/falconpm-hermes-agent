@@ -641,7 +641,8 @@
               <label>Orders<input type="number" name="orders" value="0" min="0" /></label>
               <label>Revenue (₹)<input type="number" name="revenue" value="0" min="0" /></label>
             </div>
-            <button class="btn-secondary full" type="button" id="syncMetrics">Sync Metrics</button>
+            <button class="btn-secondary full" type="button" id="syncMetrics">Save progress</button>
+            <p class="field-hint" id="trackerSaveStatus"></p>
 
             <div class="glass-card close-campaign-panel" id="closeCampaignPanel">
               <h4><span class="material-symbols-outlined text-secondary">flag</span> Close Campaign</h4>
@@ -750,11 +751,39 @@
           <p><strong>Reel idea:</strong> <span id="discoveryReel"></span></p>
         </div>
         <div class="discovery-return hidden" id="discoveryReturn">
+          <div class="discovery-teaching glass-card">
+            <p class="discovery-teaching-lead">
+              <strong>Before you synthesize:</strong> Talk to at least <strong>5 real people</strong> who could buy
+              (friends, neighbours, Instagram replies, WhatsApp contacts). Short notes are fine — patterns matter more than
+              perfect sentences.
+            </p>
+            <ul class="discovery-teaching-list">
+              <li>Who actually replied or showed interest?</li>
+              <li>Which areas or colonies came up?</li>
+              <li>What do they buy instead of you today?</li>
+              <li>What stopped them from ordering?</li>
+            </ul>
+          </div>
           <p class="form-section-title">What did you learn?</p>
-          <label>Who ordered or replied?<input name="whoFound" id="whoFound" /></label>
-          <label>Which areas?<input name="areasFound" id="areasFound" /></label>
-          <label>What they buy instead<input name="substituteFound" id="substituteFound" /></label>
-          <label>Top hesitation<select id="hesitationFound">
+          <label>
+            Who ordered or replied?
+            <span class="field-hint">e.g. 3 working moms, 2 neighbours who asked for price</span>
+            <input name="whoFound" id="whoFound" placeholder="Names optional — describe the type of person" />
+          </label>
+          <label>
+            Which areas?
+            <span class="field-hint">e.g. Sector 15, 21, Green Fields — only where you can deliver</span>
+            <input name="areasFound" id="areasFound" placeholder="Colonies or cities that came up" />
+          </label>
+          <label>
+            What they buy instead
+            <span class="field-hint">e.g. Mother's Recipe, local home chef, Farm Didi</span>
+            <input name="substituteFound" id="substituteFound" placeholder="Supermarket brand or local alternative" />
+          </label>
+          <label>
+            Top hesitation
+            <span class="field-hint">The #1 reason they didn't order yet</span>
+            <select id="hesitationFound">
             <option value="price">Price</option>
             <option value="trust">Trust</option>
             <option value="taste">Taste</option>

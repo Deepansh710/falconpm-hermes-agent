@@ -2640,3 +2640,39 @@ button {
 #categoryCustom.hidden {
   display: none;
 }
+
+/* V1.5 — draft save, goal gate, discovery teaching */
+.discovery-teaching {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+}
+
+.discovery-teaching-lead {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--on-surface-variant);
+}
+
+.discovery-teaching-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--outline);
+  line-height: 1.6;
+}
+
+.discovery-return label .field-hint {
+  margin: 0;
+  font-size: 11px;
+}
+
+#goalOptions.hidden {
+  display: none;
+}
+
+#trackerSaveStatus {
+  margin-top: 8px;
+  min-height: 1.2em;
+}

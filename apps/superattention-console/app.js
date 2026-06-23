@@ -71,6 +71,14 @@ const CATEGORY_OPTIONS = new Set([
   "Home & kitchen D2C",
 ]);
 
+const DRAFT_STORAGE_VERSION = 1;
+const DRAFT_SAVE_MS = 500;
+const DRAFT_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+
+let draftSaveTimer = null;
+let trackerSaveTimer = null;
+let suppressDraftSave = false;
+
 function resolveCategory(data) {
   const selected = data.get("category")?.toString() || "";
   if (selected === "__custom") {
@@ -88,6 +96,249 @@ function syncCategorySelect() {
   custom.classList.toggle("hidden", !showCustom);
   if (showCustom) custom.required = true;
   else custom.required = false;
+}
+
+function draftStorageKey(brandName) {
+  const slug = (brandName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_") || "default";
+  return `sa_draft_${slug}`;
+}
+
+function trackerStorageKey(campaignId) {
+  return campaignId ? `sa_tracker_${campaignId}` : "sa_tracker_pending";
+}
+
+function isGoalStepComplete() {
+  const data = new FormData(generatorForm);
+  return (
+    parseNumber(data.get("price")) > 0 &&
+    parseNumber(data.get("goalAmount")) > 0 &&
+    Boolean(data.get("orderChannel")) &&
+    Boolean(data.get("deliveryArea")?.toString().trim()) &&
+    data.getAll("channels").length > 0
+  );
+}
+
+function isGoalMathReady() {
+  const data = new FormData(generatorForm);
+  return parseNumber(data.get("price")) > 0 && parseNumber(data.get("goalAmount")) > 0;
+}
+
+function shouldDisplayGoal() {
+  if (currentPlan && currentCampaignId) return true;
+  return isGoalStepComplete();
+}
+
+function getDiscoveryState() {
+  return {
+    intro: document.querySelector("#discoveryIntro")?.textContent || "",
+    tasksHtml: document.querySelector("#discoveryTasks")?.innerHTML || "",
+    interimWhatsapp: document.querySelector("#discoveryWhatsapp")?.textContent || "",
+    interimReel: document.querySelector("#discoveryReel")?.textContent || "",
+    returnVisible: !document.querySelector("#discoveryReturn")?.classList.contains("hidden"),
+    whoFound: document.querySelector("#whoFound")?.value || "",
+    areasFound: document.querySelector("#areasFound")?.value || "",
+    substituteFound: document.querySelector("#substituteFound")?.value || "",
+    hesitationFound: document.querySelector("#hesitationFound")?.value || "",
+    panelOpen: !discoveryPanel?.classList.contains("hidden"),
+  };
+}
+
+function applyDiscoveryState(state = {}) {
+  if (!state || typeof state !== "object") return;
+  const intro = document.querySelector("#discoveryIntro");
+  const tasks = document.querySelector("#discoveryTasks");
+  if (intro && state.intro) intro.textContent = state.intro;
+  if (tasks && state.tasksHtml) tasks.innerHTML = state.tasksHtml;
+  const wa = document.querySelector("#discoveryWhatsapp");
+  const reel = document.querySelector("#discoveryReel");
+  if (wa && state.interimWhatsapp) wa.textContent = state.interimWhatsapp;
+  if (reel && state.interimReel) reel.textContent = state.interimReel;
+  const who = document.querySelector("#whoFound");
+  const areas = document.querySelector("#areasFound");
+  const sub = document.querySelector("#substituteFound");
+  const hes = document.querySelector("#hesitationFound");
+  if (who && state.whoFound) who.value = state.whoFound;
+  if (areas && state.areasFound) areas.value = state.areasFound;
+  if (sub && state.substituteFound) sub.value = state.substituteFound;
+  if (hes && state.hesitationFound) hes.value = state.hesitationFound;
+  document.querySelector("#discoveryReturn")?.classList.toggle("hidden", !state.returnVisible);
+  if (state.panelOpen && discoveryPanel) discoveryPanel.classList.remove("hidden");
+}
+
+function restoreUnsureFields() {
+  for (const name of ["whoBuys", "whereLive", "substitute"]) {
+    const hidden = generatorForm.elements.namedItem(`${name}Unsure`);
+    const input = generatorForm.elements.namedItem(name);
+    const toggle = generatorForm.querySelector(`[data-unsure-for="${name}"]`);
+    const block = generatorForm.querySelector(`.audience-field[data-field="${name}"]`);
+    const unsure = hidden?.value === "1";
+    if (input) input.disabled = unsure;
+    toggle?.classList.toggle("active", unsure);
+    block?.classList.toggle("is-unsure", unsure);
+  }
+}
+
+function serializeWizardDraft() {
+  const data = new FormData(generatorForm);
+  const fields = {};
+  for (const key of new Set([...data.keys()])) {
+    const values = data.getAll(key);
+    fields[key] = values.length > 1 ? values : (values[0] ?? "");
+  }
+  fields.channels = data.getAll("channels");
+  return {
+    version: DRAFT_STORAGE_VERSION,
+    savedAt: Date.now(),
+    currentSetupStep,
+    highestSetupStep,
+    discoveryMode,
+    discoveryOverride,
+    fields,
+    discovery: getDiscoveryState(),
+  };
+}
+
+function applyWizardDraft(draft) {
+  if (!draft?.fields) return;
+  suppressDraftSave = true;
+  const fields = draft.fields;
+
+  for (const el of generatorForm.elements) {
+    if (!el.name || el.type === "checkbox" || el.type === "radio") continue;
+    if (fields[el.name] == null) continue;
+    el.value = String(fields[el.name]);
+  }
+
+  const channels = fields.channels || [];
+  generatorForm.querySelectorAll('input[name="channels"]').forEach((checkbox) => {
+    checkbox.checked = channels.includes(checkbox.value);
+  });
+
+  const goalChoice = fields.goalChoice || "recommended";
+  generatorForm.querySelectorAll('input[name="goalChoice"]').forEach((radio) => {
+    radio.checked = radio.value === goalChoice;
+  });
+
+  discoveryMode = Boolean(draft.discoveryMode);
+  discoveryOverride = Boolean(draft.discoveryOverride);
+  applyDiscoveryState(draft.discovery || {});
+
+  currentSetupStep = draft.currentSetupStep || 1;
+  highestSetupStep = draft.highestSetupStep || currentSetupStep;
+  syncCategorySelect();
+  restoreUnsureFields();
+  syncToneChipsFromInput();
+  showSetupStep(currentSetupStep);
+  suppressDraftSave = false;
+}
+
+function saveWizardDraft() {
+  if (suppressDraftSave) return;
+  const input = getFormInput();
+  const key = draftStorageKey(input.brandName);
+  try {
+    localStorage.setItem(key, JSON.stringify(serializeWizardDraft()));
+  } catch {
+    /* storage full or private mode */
+  }
+}
+
+function scheduleWizardDraftSave() {
+  if (suppressDraftSave) return;
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(saveWizardDraft, DRAFT_SAVE_MS);
+}
+
+function clearWizardDraft(brandName) {
+  try {
+    localStorage.removeItem(draftStorageKey(brandName));
+    localStorage.removeItem(`sa_discovery_${brandName}`);
+  } catch {
+    /* ignore */
+  }
+}
+
+function findLatestWizardDraft() {
+  let latest = null;
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i);
+    if (!key?.startsWith("sa_draft_")) continue;
+    try {
+      const data = JSON.parse(localStorage.getItem(key));
+      if (!data?.fields || !data.savedAt) continue;
+      if (Date.now() - data.savedAt > DRAFT_MAX_AGE_MS) continue;
+      if (!latest || data.savedAt > latest.data.savedAt) latest = { key, data };
+    } catch {
+      /* skip corrupt entry */
+    }
+  }
+  return latest;
+}
+
+function maybeResumeWizardDraft() {
+  const latest = findLatestWizardDraft();
+  if (!latest?.data?.fields) return false;
+  const brand = latest.data.fields.brandName || "your brand";
+  const saved = new Date(latest.data.savedAt).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+  });
+  if (!confirm(`Resume Brand Setup for "${brand}"? (saved ${saved})`)) return false;
+  applyWizardDraft(latest.data);
+  return true;
+}
+
+function saveTrackerDraft() {
+  const key = trackerStorageKey(currentCampaignId);
+  try {
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        savedAt: Date.now(),
+        tracker: getTrackerData(),
+        learnings: getCloseLearnings(),
+      }),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+function scheduleTrackerSave() {
+  clearTimeout(trackerSaveTimer);
+  trackerSaveTimer = setTimeout(saveTrackerDraft, DRAFT_SAVE_MS);
+}
+
+function applyTrackerDraft(campaignId) {
+  const raw = localStorage.getItem(trackerStorageKey(campaignId));
+  if (!raw) return false;
+  try {
+    const data = JSON.parse(raw);
+    if (data.tracker) {
+      for (const [key, value] of Object.entries(data.tracker)) {
+        const field = trackerForm.elements.namedItem(key);
+        if (field != null) field.value = value;
+      }
+    }
+    if (data.learnings) {
+      const map = {
+        bestHook: data.learnings.bestHook,
+        repeatNext: data.learnings.repeat,
+        stopDoing: data.learnings.stop,
+      };
+      for (const [key, value] of Object.entries(map)) {
+        const field = trackerForm.elements.namedItem(key);
+        if (field && value != null) field.value = value;
+      }
+      if (data.learnings.topObjection) {
+        const sel = trackerForm.elements.namedItem("closeObjection");
+        if (sel) sel.value = data.learnings.topObjection;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function sanitizeOfferDraft(draft, input) {
@@ -352,6 +603,7 @@ function applyCoachFounderVersion() {
   }
   coachPanel.classList.add("hidden");
   updateDraftState();
+  scheduleWizardDraftSave();
 }
 
 function syncToneChipsFromInput() {
@@ -382,6 +634,7 @@ function toggleToneChip(chip) {
   if (toneField) toneField.value = [...selected].join(", ");
   syncToneChipsFromInput();
   updateDraftState();
+  scheduleWizardDraftSave();
 }
 
 function applyCoachClearVersion() {
@@ -407,6 +660,7 @@ function applyCoachClearVersion() {
   }
   coachPanel.classList.add("hidden");
   updateDraftState();
+  scheduleWizardDraftSave();
 }
 
 function toggleUnsure(fieldName) {
@@ -428,6 +682,7 @@ function toggleUnsure(fieldName) {
   }
   toggle?.classList.toggle("active", !active);
   block?.classList.toggle("is-unsure", !active);
+  scheduleWizardDraftSave();
 }
 
 function escapeHtml(value = "") {
@@ -517,7 +772,26 @@ function computeGoalIntelligence(input) {
   const stretch = parseNumber(input.stretchGoalAmount ?? input.goalAmount);
   const days = parseNumber(input.goalDays) || 30;
   const price = parseNumber(input.price);
-  const stretchOrders = price && stretch ? Math.ceil(stretch / price) : 0;
+  const empty = {
+    recommended: 0,
+    stretch: 0,
+    recommendedOrders: 0,
+    stretchOrders: 0,
+    recommendedOrdersPerWeek: 0,
+    stretchOrdersPerWeek: 0,
+    ordersNeeded: 0,
+    ordersPerWeek: 0,
+    isAggressive: false,
+    isAbsurd: false,
+    explanation: "Enter a revenue goal and price to see if it's realistic.",
+    recommendedGoalString: "--",
+    stretchGoalString: "--",
+    ready: false,
+  };
+
+  if (!stretch || !price) return empty;
+
+  const stretchOrders = Math.ceil(stretch / price);
   const weeks = Math.max(days / 7, 1);
   const stretchOrdersPerWeek = Math.ceil(stretchOrders / weeks);
 
@@ -537,7 +811,7 @@ function computeGoalIntelligence(input) {
   recommended = Math.round(recommended / 500) * 500;
   if (!recommended) recommended = Math.min(stretch, 10000);
 
-  const recommendedOrders = price && recommended ? Math.ceil(recommended / price) : 0;
+  const recommendedOrders = Math.ceil(recommended / price);
   const recommendedOrdersPerWeek = Math.ceil(recommendedOrders / weeks);
 
   const base = Math.max(current, 1000);
@@ -573,6 +847,7 @@ function computeGoalIntelligence(input) {
     explanation,
     recommendedGoalString: buildRevenueGoalString(recommended, days),
     stretchGoalString: buildRevenueGoalString(stretch, days),
+    ready: true,
   };
 }
 
@@ -594,8 +869,11 @@ function getFormInput() {
     goalChoice,
   });
 
-  const activeGoalAmount =
-    goalChoice === "recommended" ? String(goalIntel.recommended) : stretchGoalAmount;
+  const activeGoalAmount = !stretchGoalAmount
+    ? ""
+    : goalChoice === "recommended" && goalIntel.recommended
+      ? String(goalIntel.recommended)
+      : stretchGoalAmount;
 
   const productBundle = data.get("productBundle")?.toString().trim() || data.get("offer")?.toString().trim() || "";
   const promoHook = data.get("promoHook")?.toString().trim() || "";
@@ -628,7 +906,7 @@ function getFormInput() {
     hesitationLabel,
     audienceConfidence: data.get("audienceConfidence")?.toString() || "",
     currentRevenue: formatRupee(parseNumber(revenueRaw)),
-    revenueGoal: buildRevenueGoalString(activeGoalAmount, goalDays),
+    revenueGoal: activeGoalAmount ? buildRevenueGoalString(activeGoalAmount, goalDays) : "",
     goalAmount: activeGoalAmount,
     stretchGoalAmount,
     stretchGoal: buildRevenueGoalString(stretchGoalAmount, goalDays),
@@ -711,6 +989,7 @@ function showSetupStep(step) {
   showStatus(document.querySelector("#wizardStepError"), "");
   if (step === 4) void renderGoalIntelligence();
   updateDraftState();
+  scheduleWizardDraftSave();
 }
 
 function renderGoalIntelligence() {
@@ -723,7 +1002,23 @@ function renderGoalIntelligence() {
   const capacityWarn = document.querySelector("#capacityWarning");
   const enteredNote = document.querySelector("#goalEnteredNote");
   const activeNote = document.querySelector("#goalActiveNote");
+  const goalOptions = document.querySelector("#goalOptions");
 
+  if (!intel.ready) {
+    summary.textContent = isGoalMathReady()
+      ? intel.explanation
+      : "Fill price (Step 1) and revenue goal to see the math.";
+    if (enteredNote) enteredNote.textContent = "You entered: —";
+    if (activeNote) activeNote.textContent = "Active goal for your plan: —";
+    if (narrativeEl) narrativeEl.textContent = "";
+    goalOptions?.classList.add("hidden");
+    warn?.classList.add("hidden");
+    channelWarn?.classList.add("hidden");
+    capacityWarn?.classList.add("hidden");
+    return;
+  }
+
+  goalOptions?.classList.remove("hidden");
   summary.textContent = intel.explanation;
   if (enteredNote) {
     enteredNote.textContent = `You entered: ${compactGoal(intel.stretchGoalString)} (~${intel.stretchOrdersPerWeek} orders/week)`;
@@ -1001,10 +1296,10 @@ async function runOfferCoach() {
 async function openDiscoveryWeek() {
   const input = getFormInput();
   discoveryMode = true;
-  localStorage.setItem(`sa_discovery_${input.brandName}`, JSON.stringify({ discoveryMode: true }));
   const status = document.querySelector("#discoveryStatus");
   const btn = document.querySelector("#startDiscoveryBtn");
   showStatus(status, "Building your 1-week checklist…");
+  scheduleWizardDraftSave();
 
   try {
     setButtonLoading(btn, true, "Building…");
@@ -1029,6 +1324,7 @@ async function openDiscoveryWeek() {
     document.querySelector("#discoveryReel").textContent = result.interimReelIdea || "";
     discoveryPanel.classList.remove("hidden");
     showStatus(status, "");
+    saveWizardDraft();
   } catch (error) {
     showStatus(status, error.message, true);
   } finally {
@@ -1055,11 +1351,11 @@ async function synthesizeDiscovery() {
     generatorForm.elements.namedItem("hesitationLabel").value = result.hesitationLabel || "";
     discoveryMode = false;
     discoveryOverride = false;
-    localStorage.removeItem(`sa_discovery_${input.brandName}`);
     discoveryPanel.classList.add("hidden");
     showStatus(status, result.confidenceNote || "Customer summary saved.");
     document.querySelector("#audienceCoachStatus").textContent =
       "Nice — you talked to real people. That's real data.";
+    saveWizardDraft();
     showSetupStep(3);
   } catch (error) {
     showStatus(status, error.message, true);
@@ -1135,15 +1431,16 @@ async function runCloseDebriefCoach() {
 function renderBriefReview() {
   const input = getFormInput();
   const intel = computeGoalIntelligence(input);
+  const showGoal = shouldDisplayGoal();
   document.querySelector("#briefReview").innerHTML = `
     <div class="brief-review-block"><span class="label">Customer</span><p>${escapeHtml(input.audience || "—")}</p></div>
     <div class="brief-review-block"><span class="label">Mission</span><p>${escapeHtml(input.brandMission || "—")}</p></div>
     <div class="brief-review-block"><span class="label">Different</span><p>${escapeHtml(input.brandDifferentiation || "—")}</p></div>
     <div class="brief-review-block"><span class="label">Product</span><p>${escapeHtml(input.productBundle)}</p></div>
     <div class="brief-review-block"><span class="label">Promo hook</span><p>${escapeHtml(input.promoHook || "None")}</p></div>
-    <div class="brief-review-block"><span class="label">Goal (active)</span><p>${escapeHtml(input.revenueGoal)} ${input.goalChoice === "stretch" && intel.isAggressive ? "(phased plan)" : ""}</p></div>
+    ${showGoal ? `<div class="brief-review-block"><span class="label">Goal (active)</span><p>${escapeHtml(input.revenueGoal)} ${input.goalChoice === "stretch" && intel.isAggressive ? "(phased plan)" : ""}</p></div>
     <div class="brief-review-block"><span class="label">You entered</span><p>${escapeHtml(input.stretchGoal || input.revenueGoal)}</p></div>
-    <div class="brief-review-block"><span class="label">Goal coach</span><p>${escapeHtml(goalCoachCache || buildGoalNarrative(intel, input))}</p></div>
+    <div class="brief-review-block"><span class="label">Goal coach</span><p>${escapeHtml(goalCoachCache || buildGoalNarrative(intel, input))}</p></div>` : `<div class="brief-review-block"><span class="label">Goal</span><p>Complete Step 4 to set your campaign goal.</p></div>`}
     <div class="brief-review-block"><span class="label">Capacity</span><p>${escapeHtml(input.contentCapacity)}</p></div>
     <div class="brief-review-block"><span class="label">Channels</span><p>${escapeHtml(input.channels.join(", "))}</p></div>
   `;
@@ -1304,6 +1601,7 @@ function loadCampaignFromHistory(id, { duplicate = false } = {}) {
       if (field) field.value = value;
     }
   }
+  applyTrackerDraft(row.id);
 
   const learnings = row.metrics?.learnings;
   if (learnings) {
@@ -1349,43 +1647,46 @@ async function deleteCampaign(id) {
 function updateDraftState() {
   const input = getFormInput();
   const tracker = getTrackerData();
-  const goal = numberFromCurrency(input.revenueGoal);
-  const units = unitTarget(input.revenueGoal, input.price);
+  const showGoal = shouldDisplayGoal();
+  const goal = showGoal ? numberFromCurrency(input.revenueGoal) : 0;
+  const units = showGoal ? unitTarget(input.revenueGoal, input.price) : 0;
   const progress = goal ? Math.min(100, Math.round((tracker.revenue / goal) * 100)) : 0;
   const intel = computeGoalIntelligence(input);
   const primaryChannel = input.channels.includes("WhatsApp campaign")
     ? "WhatsApp"
     : input.channels[0]?.replace(" campaign", "") || "--";
   const isClosed = campaignHistory.find((c) => c.id === currentCampaignId)?.status === "closed";
+  const goalLabel = showGoal && input.revenueGoal ? compactGoal(input.revenueGoal) : "--";
 
   document.querySelector("#topBrandName").textContent = input.brandName || "No brand selected";
-  document.querySelector("#topGoalChip").textContent = input.revenueGoal
-    ? `Current Goal: ${compactGoal(input.revenueGoal)}`
+  document.querySelector("#topGoalChip").textContent = showGoal && input.revenueGoal
+    ? `Current Goal: ${goalLabel}`
     : "Current Goal: --";
-  document.querySelector("#sideGoalValue").textContent = compactGoal(input.revenueGoal);
+  document.querySelector("#sideGoalValue").textContent = goalLabel;
 
   const tipParts = [];
-  if (input.goalChoice === "recommended" && parseNumber(input.stretchGoalAmount) !== parseNumber(input.goalAmount)) {
+  if (showGoal && input.goalChoice === "recommended" && parseNumber(input.stretchGoalAmount) !== parseNumber(input.goalAmount)) {
     tipParts.push(`Plan uses recommended ${compactGoal(input.revenueGoal)} (you entered ${compactGoal(input.stretchGoal)}).`);
   }
-  if (intel.ordersPerWeek) tipParts.push(`~${intel.ordersPerWeek} orders/week on active goal.`);
+  if (showGoal && intel.ordersPerWeek) tipParts.push(`~${intel.ordersPerWeek} orders/week on active goal.`);
   if (input.promoHook) tipParts.push(`Promo: ${input.promoHook.slice(0, 40)}…`);
-  document.querySelector("#sideGoalTip").textContent = tipParts.length
+  document.querySelector("#sideGoalTip").textContent = showGoal && tipParts.length
     ? tipParts.join(" ")
-    : "Complete setup to see goal math.";
+    : "Complete Step 4 (goal + channels) to see your target.";
 
   document.querySelector("#briefTitle").textContent = input.product ? `${input.product} growth brief` : "Waiting for inputs";
   document.querySelector("#briefCopy").textContent = input.audience
     ? `Customer: ${input.audience.slice(0, 120)}${input.audience.length > 120 ? "…" : ""}`
     : "Step through the wizard — we help you think before we plan.";
 
-  document.querySelector("#briefStack").innerHTML = [
-    ["Goal", input.revenueGoal],
+  const briefRows = [
+    showGoal ? ["Goal", input.revenueGoal] : null,
     ["Promo", input.promoHook || "—"],
     ["Hesitation", input.hesitationLabel || "—"],
     ["Capacity", input.contentCapacity],
     ["Stage", input.brandStage],
-  ]
+  ].filter(Boolean);
+  document.querySelector("#briefStack").innerHTML = briefRows
     .filter(([, value]) => value && value !== "—")
     .map(
       ([label, value]) => `
@@ -1394,10 +1695,14 @@ function updateDraftState() {
     )
     .join("");
 
-  document.querySelector("#dashboardGoalLabel").textContent = units ? `Goal: ${units} units` : "Goal: add setup";
-  document.querySelector("#dashboardRevenueLabel").textContent = `Target revenue: ${compactGoal(input.revenueGoal)}`;
+  document.querySelector("#dashboardGoalLabel").textContent = showGoal && units
+    ? `Goal: ${units} units`
+    : "Goal: complete setup";
+  document.querySelector("#dashboardRevenueLabel").textContent = showGoal && input.revenueGoal
+    ? `Target revenue: ${goalLabel}`
+    : "Target revenue: --";
   document.querySelector("#dashboardUnits").textContent = String(units || 0);
-  setRingProgress(progress);
+  setRingProgress(showGoal ? progress : 0);
 
   document.querySelector("#metricViews").textContent = tracker.views.toLocaleString("en-IN");
   document.querySelector("#metricInquiries").textContent = tracker.inquiries.toLocaleString("en-IN");
@@ -1411,7 +1716,7 @@ function updateDraftState() {
     (input.product ? `Configure and generate a 30-day plan for ${input.product}.` : "Configure brand setup and generate a plan.");
   document.querySelector("#dashboardLiveBadge").textContent = isClosed ? "Closed" : currentPlan ? "Active Campaign" : "Draft";
   document.querySelector("#dashboardStatusPill").textContent = isClosed ? "CLOSED" : currentPlan ? "LIVE" : "SETUP";
-  document.querySelector("#dashStatGoal").textContent = compactGoal(input.revenueGoal);
+  document.querySelector("#dashStatGoal").textContent = goalLabel;
   document.querySelector("#dashStatChannel").textContent = primaryChannel;
   document.querySelector("#dashStatRevenue").textContent = `₹${tracker.revenue.toLocaleString("en-IN")}`;
   document.querySelector("#dashStatProgress").textContent = `${progress}%`;
@@ -1435,6 +1740,7 @@ function fillSample() {
   renderEmptyPlan();
   showSetupStep(1);
   syncToneChipsFromInput();
+  scheduleWizardDraftSave();
   updateDraftState();
   switchView("setup");
 }
@@ -1724,6 +2030,7 @@ async function generatePlan() {
     if (data.usedPriorLearnings) {
       document.querySelector("#campaignProjection").textContent = "AI Projection: informed by last closed campaign";
     }
+    clearWizardDraft(input.brandName);
     switchView("campaign");
   } catch (error) {
     commandCenter.className = "glass-card command-empty error-state";
@@ -1754,6 +2061,7 @@ async function closeCampaign() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Failed to close campaign");
     showStatus(statusEl, "Campaign closed. Next plan will use these learnings.");
+    saveTrackerDraft();
     await loadCampaignHistory();
     updateDraftState();
   } catch (error) {
@@ -1931,13 +2239,20 @@ document.querySelectorAll(".tone-chip").forEach((chip) => {
 
 document.querySelector("#showDiscoveryReturn")?.addEventListener("click", () => {
   document.querySelector("#discoveryReturn").classList.remove("hidden");
+  scheduleWizardDraftSave();
 });
 document.querySelector("#synthesizeDiscoveryBtn")?.addEventListener("click", () => void synthesizeDiscovery());
 document.querySelector("#forcePlanBtn")?.addEventListener("click", () => {
   discoveryOverride = true;
   discoveryMode = false;
   discoveryPanel.classList.add("hidden");
+  scheduleWizardDraftSave();
   alert("OK — we'll build a plan, but it may be less accurate without customer data.");
+});
+
+["#whoFound", "#areasFound", "#substituteFound", "#hesitationFound"].forEach((sel) => {
+  document.querySelector(sel)?.addEventListener("input", scheduleWizardDraftSave);
+  document.querySelector(sel)?.addEventListener("change", scheduleWizardDraftSave);
 });
 
 document.querySelector("#structureFailuresBtn")?.addEventListener("click", () => void structureFailures());
@@ -1947,7 +2262,12 @@ document.querySelector("#confirmGenerateBtn")?.addEventListener("click", () => v
 document.querySelector("#optimizeBtn")?.addEventListener("click", () => {
   switchView(currentPlan ? "tracker" : "setup");
 });
-document.querySelector("#syncMetrics")?.addEventListener("click", updateDraftState);
+document.querySelector("#syncMetrics")?.addEventListener("click", () => {
+  saveTrackerDraft();
+  const status = document.querySelector("#trackerSaveStatus");
+  if (status) showStatus(status, "Progress saved on this device.");
+  updateDraftState();
+});
 document.querySelector("#closeCampaignBtn")?.addEventListener("click", () => void closeCampaign());
 document.querySelector("#refreshHistory")?.addEventListener("click", () => void loadCampaignHistory());
 
@@ -1964,27 +2284,34 @@ generatorForm.addEventListener("input", () => {
   }
   if (currentSetupStep === 4) renderGoalIntelligence();
   updateDraftState();
+  scheduleWizardDraftSave();
 });
 document.querySelector("#categorySelect")?.addEventListener("change", () => {
   syncCategorySelect();
   updateDraftState();
+  scheduleWizardDraftSave();
 });
 generatorForm.querySelectorAll('input[name="goalChoice"]').forEach((radio) => {
   radio.addEventListener("change", () => {
     if (currentSetupStep === 4) renderGoalIntelligence();
     updateDraftState();
+    scheduleWizardDraftSave();
   });
 });
 generatorForm.addEventListener("submit", (e) => e.preventDefault());
 trackerForm.addEventListener("input", () => {
   updateDraftState();
   updateInsights();
+  scheduleTrackerSave();
 });
 
 renderEmptyPlan();
-showSetupStep(1);
 syncCategorySelect();
 syncToneChipsFromInput();
+if (!maybeResumeWizardDraft()) {
+  showSetupStep(1);
+  applyTrackerDraft(null);
+}
 updateDraftState();
 setRingProgress(0);
 void loadCampaignHistory();
