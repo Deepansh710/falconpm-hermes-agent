@@ -2550,3 +2550,93 @@ button {
   color: var(--tertiary);
   margin-top: 8px;
 }
+
+/* V1.4 */
+.question-label {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--on-surface);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.field-hint-sub {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  color: var(--outline);
+}
+
+.coach-cta-row {
+  margin-top: 16px;
+}
+
+.discovery-link {
+  display: block;
+  margin-top: 12px;
+  padding: 8px 0;
+  border: 0;
+  background: none;
+  color: var(--on-surface-variant);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  min-height: 44px;
+  text-align: left;
+}
+
+.discovery-link:hover {
+  color: var(--tertiary);
+}
+
+.goal-active-note {
+  color: var(--secondary);
+  font-weight: 600;
+}
+
+#goalEnteredNote {
+  margin-bottom: 4px;
+}
+
+.wa-pack-dl {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.wa-pack-dl dt {
+  color: var(--on-surface-variant);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.wa-pack-dl dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.wa-message-block {
+  white-space: pre-wrap;
+  background: var(--surface-container-lowest);
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.copy-btn.small {
+  margin-top: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+}
+
+#categoryCustom {
+  margin-top: 8px;
+}
+
+#categoryCustom.hidden {
+  display: none;
+}

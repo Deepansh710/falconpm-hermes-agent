@@ -37,6 +37,168 @@ function formatCapacity(input) {
   return parts.join(", ") || "not specified";
 }
 
+function parsePriceNumber(price) {
+  if (price == null) return 0;
+  const cleaned = String(price).replace(/,/g, "").match(/[0-9]+(\.[0-9]+)?/);
+  return cleaned ? Number(cleaned[0]) : 0;
+}
+
+function allowedExperimentTypes(channels = []) {
+  const allowed = new Set();
+  for (const ch of channels) {
+    const c = String(ch).toLowerCase();
+    if (c.includes("reel")) allowed.add("reel");
+    if (c.includes("whatsapp")) allowed.add("whatsapp");
+    if (c.includes("website")) allowed.add("website");
+    if (c.includes("linkedin")) allowed.add("linkedin");
+    if (c.includes("email")) allowed.add("email");
+  }
+  return allowed;
+}
+
+function normalizeExperimentType(type = "") {
+  const t = String(type).toLowerCase();
+  if (t.includes("reel")) return "reel";
+  if (t.includes("whatsapp")) return "whatsapp";
+  if (t.includes("website")) return "website";
+  if (t.includes("linkedin")) return "linkedin";
+  if (t.includes("email")) return "email";
+  if (t.includes("offer")) return "offer";
+  return t;
+}
+
+function isEmptyField(value) {
+  const t = (value || "").trim();
+  return !t || t === "—" || t === "-";
+}
+
+function enrichWhatsappPack(wa, input, weekIndex) {
+  const area = input.deliveryArea || input.whereLive || "your delivery area";
+  const price = input.price || "";
+  const product = input.product || "product";
+  const promo = input.promoHook || "";
+  const bundle = input.productBundle || input.offer || product;
+  const baseMessage =
+    wa.message ||
+    `Hi! I make ${bundle} at ${price}. ${promo ? `${promo}. ` : ""}Reply YES if you want to order in ${area}.`;
+
+  return {
+    title: wa.title || `Week ${weekIndex + 1} broadcast`,
+    message: baseMessage,
+    photoBrief:
+      wa.photoBrief ||
+      `1 clear photo: ${product} jar, natural light, optional plate of food. No text on image.`,
+    whoToMessage:
+      wa.whoToMessage ||
+      `20–30 warm contacts in ${area} (friends, neighbours, past buyers)`,
+    sendTime: wa.sendTime || "Tue or Wed, 7–9pm",
+    replyScript:
+      wa.replyScript ||
+      `If price: remind ${price} and ${promo || "quality"}. If trust: offer founder delivery.`,
+    metric: wa.metric || "Reply rate and orders placed",
+  };
+}
+
+function enrichReelExperiment(exp, reel, input) {
+  const hook = reel?.hook || reel?.script || "";
+  return {
+    ...exp,
+    type: exp.type || "Reel",
+    why: isEmptyField(exp.why)
+      ? `Reels build trust with ${(input.audience || "your buyer").slice(0, 60)}.`
+      : exp.why,
+    action: isEmptyField(exp.action)
+      ? hook
+        ? `Film 30s Reel: ${hook}`
+        : `Film 30s Reel featuring ${input.product} — hook in first 3 seconds.`
+      : exp.action,
+    cta: isEmptyField(exp.cta) ? reel?.cta || input.promoHook || "Order on WhatsApp" : exp.cta,
+    metric: isEmptyField(exp.metric) ? "Saves and WhatsApp DMs" : exp.metric,
+    decisionRule: isEmptyField(exp.decisionRule)
+      ? "If 3+ saves or DMs, repeat this hook style next week."
+      : exp.decisionRule,
+  };
+}
+
+function enrichWhatsappExperiment(exp, waPack, input) {
+  return {
+    ...exp,
+    type: exp.type || "WhatsApp",
+    why: isEmptyField(exp.why) ? "Warm contacts convert faster than cold outreach." : exp.why,
+    action: isEmptyField(exp.action)
+      ? `Send the exact message below to: ${waPack.whoToMessage}`
+      : exp.action,
+    message: exp.message || waPack.message,
+    photoBrief: exp.photoBrief || waPack.photoBrief,
+    whoToMessage: exp.whoToMessage || waPack.whoToMessage,
+    sendTime: exp.sendTime || waPack.sendTime,
+    replyScript: exp.replyScript || waPack.replyScript,
+    cta: isEmptyField(exp.cta) ? waPack.message.slice(0, 100) : exp.cta,
+    metric: isEmptyField(exp.metric) ? waPack.metric : exp.metric,
+    decisionRule: isEmptyField(exp.decisionRule)
+      ? "Under 2 replies? Send a personal voice note on day 3."
+      : exp.decisionRule,
+  };
+}
+
+function normalizePlan(plan, input) {
+  if (!plan || typeof plan !== "object") return plan;
+  const allowed = allowedExperimentTypes(input.channels || []);
+  const reels = plan.contentAssets?.reels || [];
+  let whatsapp = (plan.contentAssets?.whatsapp || []).map((wa, i) => enrichWhatsappPack(wa, input, i));
+
+  if (!plan.contentAssets) plan.contentAssets = {};
+  plan.contentAssets.whatsapp = whatsapp;
+  if (!allowed.has("website")) plan.contentAssets.website = [];
+  if (!allowed.has("linkedin")) plan.contentAssets.linkedin = [];
+  if (!allowed.has("reel")) plan.contentAssets.reels = [];
+  if (!allowed.has("whatsapp")) plan.contentAssets.whatsapp = [];
+
+  const priceNum = parsePriceNumber(input.price);
+  if (priceNum && plan.contentAssets.whatsapp) {
+    plan.contentAssets.whatsapp = plan.contentAssets.whatsapp.map((wa) => {
+      let message = wa.message || "";
+      const wrongPrices = message.match(/Rs\.?\s*[\d,]+/gi) || [];
+      for (const match of wrongPrices) {
+        const n = parsePriceNumber(match);
+        if (n && n !== priceNum) {
+          message = message.replace(match, input.price);
+        }
+      }
+      return { ...wa, message };
+    });
+  }
+
+  plan.weeklyPlan = (plan.weeklyPlan || []).map((week, weekIndex) => {
+    const waPack = enrichWhatsappPack(whatsapp[weekIndex] || whatsapp[0] || {}, input, weekIndex);
+    const reelAsset = reels[weekIndex] || reels[weekIndex % Math.max(reels.length, 1)] || {};
+
+    let experiments = (week.experiments || [])
+      .map((exp) => {
+        const kind = normalizeExperimentType(exp.type);
+        if (kind === "reel") return enrichReelExperiment(exp, reelAsset, input);
+        if (kind === "whatsapp") return enrichWhatsappExperiment(exp, waPack, input);
+        return exp;
+      })
+      .filter((exp) => {
+        const kind = normalizeExperimentType(exp.type);
+        if (kind === "offer") return true;
+        return allowed.has(kind);
+      });
+
+    if (allowed.has("whatsapp") && !experiments.some((e) => normalizeExperimentType(e.type) === "whatsapp")) {
+      experiments.push(enrichWhatsappExperiment({ type: "WhatsApp", title: waPack.title }, waPack, input));
+    }
+    if (allowed.has("reel") && !experiments.some((e) => normalizeExperimentType(e.type) === "reel")) {
+      experiments.push(enrichReelExperiment({ type: "Reel", title: reelAsset.title || "Reel" }, reelAsset, input));
+    }
+
+    return { ...week, experiments: experiments.slice(0, 2) };
+  });
+
+  return plan;
+}
+
 function buildPrompt(input, priorLearnings = null) {
   const productBundle = input.productBundle || input.offer || "";
   const promoHook = input.promoHook || "";
@@ -73,6 +235,21 @@ Goal mode: RECOMMENDED — use the recommended revenue target as primaryGoal in 
       ? "Use at most 2 channels. Prefer Instagram Reels + WhatsApp campaign for early food D2C."
       : "";
 
+  const channelList = (input.channels || []).map((channel) => `- ${channel}`).join("\n");
+  const onlyTheseChannels = `
+CHANNEL RULE (mandatory):
+- Generate experiments and contentAssets ONLY for these selected channels:
+${channelList}
+- Do NOT add Email, LinkedIn, or Website content if not listed above.
+- Each week MUST have complete Reel AND WhatsApp experiments if both are selected — every field filled (why, action, cta, metric, decisionRule). Never leave why or action empty.
+`;
+
+  const priceLock = `
+PRICE LOCK (mandatory):
+- Product price is EXACTLY ${input.price}. Never invent a different price, weight, or jar size.
+- Use product bundle exactly: ${productBundle}
+`;
+
   return `
 You are superattention.ai, an AI growth coach for early Indian D2C brands.
 
@@ -82,7 +259,8 @@ Brand:
 - Name: ${input.brandName}
 - Category: ${input.category}
 - Current monthly revenue: ${input.currentRevenue}
-- Revenue goal: ${input.revenueGoal}
+- Revenue goal (active): ${input.revenueGoal}
+- Founder entered stretch: ${input.stretchGoal || input.revenueGoal}
 - Recommended goal: ${input.recommendedGoal || "same as revenue goal"}
 - Brand tone: ${input.brandTone}
 - Brand stage: ${input.brandStage || "not specified"}
@@ -106,8 +284,10 @@ Audience and market:
 - Content capacity: ${capacity}
 
 Channels to use:
-${input.channels.map((channel) => `- ${channel}`).join("\n")}
+${channelList}
 ${channelLimit}
+${onlyTheseChannels}
+${priceLock}
 ${phasedBlock}
 ${learningsBlock}
 
@@ -141,20 +321,25 @@ Use this exact structure:
       "objective": "plain-English objective",
       "experiments": [
         {
-          "type": "Reel / WhatsApp / Website / Offer / LinkedIn",
+          "type": "Reel or WhatsApp only",
           "title": "short title",
-          "why": "why this experiment matters",
-          "action": "what founder should do",
+          "why": "why this experiment matters — REQUIRED non-empty",
+          "action": "what founder should do — REQUIRED non-empty",
           "cta": "exact CTA",
           "metric": "main metric",
-          "decisionRule": "what to do based on result"
+          "decisionRule": "what to do based on result",
+          "message": "for WhatsApp only: exact copy-paste message",
+          "photoBrief": "for WhatsApp only: what photo to attach",
+          "whoToMessage": "for WhatsApp only: who to message",
+          "sendTime": "for WhatsApp only: best send time",
+          "replyScript": "for WhatsApp only: 1-line reply if they hesitate"
         }
       ]
     }
   ],
   "contentAssets": {
     "reels": [{"title": "title", "hook": "hook", "script": "short script", "cta": "cta"}],
-    "whatsapp": [{"title": "title", "message": "message"}],
+    "whatsapp": [{"title": "title", "message": "exact copy-paste broadcast", "photoBrief": "photo instructions", "whoToMessage": "who to message", "sendTime": "when to send", "replyScript": "reply if they hesitate", "metric": "success metric"}],
     "website": [{"title": "title", "copy": "copy"}],
     "linkedin": [{"title": "title", "post": "post"}]
   },
@@ -381,7 +566,7 @@ Your previous response was truncated or invalid JSON. Return the same plan again
         throw new Error("Response hit token limit before JSON completed");
       }
 
-      return parsePlanJson(text);
+      return normalizePlan(parsePlanJson(text), input);
     } catch (error) {
       lastError = error;
     }
@@ -505,3 +690,4 @@ module.exports = async function handler(req, res) {
 // Export for tests
 module.exports.buildPrompt = buildPrompt;
 module.exports.validateInput = validateInput;
+module.exports.normalizePlan = normalizePlan;

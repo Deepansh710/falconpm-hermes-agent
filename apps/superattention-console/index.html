@@ -207,8 +207,20 @@
             </div>
             <div class="form-block">
               <label class="field-label"><span class="material-symbols-outlined">inventory_2</span> Category</label>
-              <p class="field-hint">One line: what category you compete in. <strong>Good:</strong> Homemade Indian pickles</p>
-              <input name="category" placeholder="e.g. Homemade Indian pickles" required minlength="3" />
+              <p class="field-hint">Pick the closest match — helps the AI use the right playbook.</p>
+              <select name="category" id="categorySelect" required>
+                <option value="">Select category</option>
+                <option value="Homemade Indian pickles">Pickles &amp; condiments</option>
+                <option value="Snacks &amp; namkeen">Snacks &amp; namkeen</option>
+                <option value="Spices &amp; masalas">Spices &amp; masalas</option>
+                <option value="Sweets &amp; mithai">Sweets &amp; mithai</option>
+                <option value="Health &amp; wellness D2C">Health &amp; wellness</option>
+                <option value="Beauty &amp; skincare D2C">Beauty &amp; skincare</option>
+                <option value="Fashion &amp; accessories D2C">Fashion &amp; accessories</option>
+                <option value="Home &amp; kitchen D2C">Home &amp; kitchen</option>
+                <option value="__custom">Other — describe below</option>
+              </select>
+              <input name="categoryCustom" id="categoryCustom" class="hidden" placeholder="e.g. Regional artisan foods" minlength="3" />
             </div>
             <div class="form-block">
               <label class="field-label"><span class="material-symbols-outlined">inventory_2</span> Main Product</label>
@@ -223,7 +235,7 @@
               </div>
               <div class="form-block">
                 <label class="field-label">Current monthly revenue (₹)</label>
-                <p class="field-hint">Honest last-30-day number. Use 0 if pre-revenue.</p>
+                <p class="field-hint">Last 30 days for this <strong>brand</strong> (all products). New SKU? Use brand total, or 0 if pre-revenue.</p>
                 <input name="currentRevenue" type="number" min="0" step="1" placeholder="10000" required />
               </div>
             </div>
@@ -231,24 +243,24 @@
 
             <div class="setup-step hidden" data-setup-step="2">
               <p class="form-section-title">Who is your customer?</p>
-              <p class="coach-intro">Answer in your own words. Tap <strong>Not sure yet</strong> on any question if you need Discovery Week first.</p>
+              <p class="coach-intro">Answer in your own words — short is fine.</p>
               <div class="form-block audience-field" data-field="whoBuys">
-                <label class="field-label">Who actually buys?</label>
-                <p class="field-hint">We ask because your Reels and WhatsApp must speak to one person, not everyone.</p>
+                <label class="field-label question-label">Who actually buys?</label>
+                <p class="field-hint field-hint-sub">Your Reels and WhatsApp must speak to one person, not everyone.</p>
                 <input name="whoBuys" placeholder="e.g. Working moms in Faridabad" />
                 <button class="not-sure-toggle" type="button" data-unsure-for="whoBuys">Not sure yet</button>
                 <input type="hidden" name="whoBuysUnsure" value="" />
               </div>
               <div class="form-block audience-field" data-field="whereLive">
-                <label class="field-label">Where do they live?</label>
-                <p class="field-hint">City or areas you can actually deliver to.</p>
+                <label class="field-label question-label">Where do they live?</label>
+                <p class="field-hint field-hint-sub">Areas you can deliver to — we name them in WhatsApp &amp; Reels.</p>
                 <input name="whereLive" placeholder="e.g. Faridabad Sector 15-21" />
                 <button class="not-sure-toggle" type="button" data-unsure-for="whereLive">Not sure yet</button>
                 <input type="hidden" name="whereLiveUnsure" value="" />
               </div>
               <div class="form-block audience-field" data-field="substitute">
-                <label class="field-label">What do they buy instead of you?</label>
-                <p class="field-hint">Local auntie, supermarket brand, Swiggy — whoever you compete with today.</p>
+                <label class="field-label question-label">What do they buy instead of you?</label>
+                <p class="field-hint field-hint-sub">Local auntie, supermarket brand, or D2C name (e.g. Farm Didi).</p>
                 <input name="substitute" placeholder="e.g. Mother's Recipe or local home chef" />
                 <button class="not-sure-toggle" type="button" data-unsure-for="substitute">Not sure yet</button>
                 <input type="hidden" name="substituteUnsure" value="" />
@@ -279,8 +291,10 @@
               </div>
               <textarea name="audience" class="hidden" aria-hidden="true"></textarea>
               <input type="hidden" name="hesitationLabel" />
-              <button class="btn-secondary" id="coachAudienceBtn" type="button">Help me write this clearly</button>
-              <button class="btn-ghost" id="startDiscoveryBtn" type="button">I'm not sure about any of this → Discovery Week</button>
+              <div class="coach-cta-row">
+                <button class="btn-secondary" id="coachAudienceBtn" type="button">Help me write my customer summary</button>
+              </div>
+              <button class="discovery-link" id="startDiscoveryBtn" type="button">Not sure about these customer questions? Start Discovery Week →</button>
               <p class="field-hint inline-error hidden" id="audienceCoachStatus"></p>
             </div>
 
@@ -427,15 +441,17 @@
             </div>
             <div class="glass-card goal-intel-card" id="goalIntelCard">
               <h4>Is this goal realistic?</h4>
+              <p class="field-hint" id="goalEnteredNote">You entered: —</p>
+              <p class="field-hint goal-active-note" id="goalActiveNote">Active goal for your plan: —</p>
               <p class="muted" id="goalIntelSummary">Fill price and revenue to see the math.</p>
               <div class="goal-options" id="goalOptions">
                 <label class="goal-option">
                   <input type="radio" name="goalChoice" value="recommended" checked />
-                  <span><strong id="recommendedGoalLabel">Recommended</strong><small id="recommendedGoalNote"></small></span>
+                  <span><strong id="recommendedGoalLabel">Recommended (safer)</strong><small id="recommendedGoalNote"></small></span>
                 </label>
                 <label class="goal-option">
                   <input type="radio" name="goalChoice" value="stretch" />
-                  <span><strong id="stretchGoalLabel">Your target</strong><small id="stretchGoalNote"></small></span>
+                  <span><strong id="stretchGoalLabel">Use my number</strong><small id="stretchGoalNote"></small></span>
                 </label>
               </div>
               <p class="field-hint warn hidden" id="goalWarning"></p>
@@ -708,7 +724,7 @@
           <p>Writing a clear version for you…</p>
         </div>
         <div class="coach-panel-actions">
-          <button class="btn-ghost" id="useFounderAudience" type="button">Keep mine</button>
+          <button class="btn-ghost" id="useFounderAudience" type="button">Keep my draft</button>
           <button class="btn-primary" id="useClearAudience" type="button">Use clear version</button>
         </div>
       </div>
