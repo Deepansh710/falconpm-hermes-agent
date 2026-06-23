@@ -15,6 +15,7 @@ const sampleBrand = {
   hesitationLabel: "oily",
   audienceConfidence: "very_sure",
   currentRevenue: "10000",
+  campaignScope: "single_sku",
   goalAmount: "50000",
   goalDays: "30",
   orderChannel: "WhatsApp with UPI before delivery",
@@ -219,6 +220,12 @@ function applyWizardDraft(draft) {
     radio.checked = radio.value === goalChoice;
   });
 
+  const scope = fields.campaignScope || "single_sku";
+  generatorForm.querySelectorAll('input[name="campaignScope"]').forEach((radio) => {
+    radio.checked = radio.value === scope;
+  });
+  syncRevenueScopeLabels();
+
   discoveryMode = Boolean(draft.discoveryMode);
   discoveryOverride = Boolean(draft.discoveryOverride);
   applyDiscoveryState(draft.discovery || {});
@@ -400,12 +407,46 @@ function isEmptyExpField(value) {
   return !t || t === "—" || t === "-";
 }
 
+function buildWhatsappOpsExtras(input) {
+  const area = input.deliveryArea || input.whereLive || "your area";
+  const price = input.price || "your price";
+  const product = input.product || "product";
+  const bundle = input.productBundle || input.offer || product;
+  const promo = input.promoHook || "";
+  const brand = input.brandName || "our brand";
+  const channel = (input.orderChannel || "").toLowerCase();
+  const isCod = channel.includes("cod");
+  const paymentLine = isCod
+    ? `Cash on delivery when we deliver to ${area}.`
+    : `Please UPI ${price} before dispatch and send payment screenshot here.`;
+
+  return {
+    contactListGuide: `Week 1: message 20–30 warm contacts in ${area} (friends, neighbours, past tasters). Week 2+: add 10–15 Instagram/WhatsApp leads. Avoid cold strangers in week 1.`,
+    replyYesScript: `Thanks! 🙏 Order: ${bundle} at ${price}. ${paymentLine} Please share full address + preferred delivery day.`,
+    orderConfirmScript: `Order confirmed ✅ ${bundle} — delivery on [DAY] to [ADDRESS]. ${isCod ? "Keep exact change ready for COD." : "Payment received — thank you!"}`,
+    deliveryScript: `Your ${product} is out for delivery today. We'll reach you between [TIME]. Reply if you need to reschedule.`,
+    objectionPrice: `Fair question — ${price} for ${bundle}. ${promo ? `${promo}. ` : ""}Small-batch, not factory-made. Happy to share ingredients.`,
+    objectionTrust: `Totally understand. ${brand} is founder-run — I deliver in ${area} myself. Try once; we'll make it right.`,
+    objectionOily: `We use less oil than typical market pickles — non-oily line. Happy to share ingredients. Worth one try.`,
+    objectionDefault: `Happy to help — what would make you comfortable to try once?`,
+  };
+}
+
+function pickPrimaryObjection(input, ops) {
+  const h = (input.hesitationLabel || input.hesitation || "").toLowerCase();
+  if (h.includes("price")) return ops.objectionPrice;
+  if (h.includes("trust") || h.includes("unknown")) return ops.objectionTrust;
+  if (h.includes("oily") || h.includes("taste")) return ops.objectionOily;
+  return ops.objectionDefault;
+}
+
 function enrichWhatsappPackClient(wa, input, weekIndex) {
   const area = input.deliveryArea || input.whereLive || "your delivery area";
   const price = input.price || "";
   const product = input.product || "product";
   const promo = input.promoHook || "";
   const bundle = input.productBundle || input.offer || product;
+  const ops = buildWhatsappOpsExtras(input);
   const baseMessage =
     wa.message ||
     `Hi! I make ${bundle} at ${price}. ${promo ? `${promo}. ` : ""}Reply YES to order in ${area}.`;
@@ -419,11 +460,191 @@ function enrichWhatsappPackClient(wa, input, weekIndex) {
     whoToMessage:
       wa.whoToMessage || `20–30 warm contacts in ${area} (friends, neighbours, past buyers)`,
     sendTime: wa.sendTime || "Tue or Wed, 7–9pm",
-    replyScript:
-      wa.replyScript ||
-      `If price: remind ${price} and ${promo || "quality"}. If trust: offer founder delivery.`,
+    replyScript: wa.replyScript || pickPrimaryObjection(input, ops),
+    contactListGuide: wa.contactListGuide || ops.contactListGuide,
+    replyYesScript: wa.replyYesScript || ops.replyYesScript,
+    orderConfirmScript: wa.orderConfirmScript || ops.orderConfirmScript,
+    deliveryScript: wa.deliveryScript || ops.deliveryScript,
+    objectionPrice: wa.objectionPrice || ops.objectionPrice,
+    objectionTrust: wa.objectionTrust || ops.objectionTrust,
+    objectionOily: wa.objectionOily || ops.objectionOily,
     metric: wa.metric || "Reply rate and orders placed",
   };
+}
+
+function analyzeCapacityRisk(input) {
+  const intel = computeGoalIntelligence(input);
+  const ordersPerWeek = intel.ready ? intel.ordersPerWeek : 0;
+  const reels = parseNumber(input.reelsPerWeek);
+  const hours = parseNumber(input.hoursPerWeek);
+  const messages = [];
+  let level = "ok";
+
+  if (ordersPerWeek > 15 && hours <= 3) {
+    messages.push(
+      `~${ordersPerWeek} orders/week is ambitious for ~${hours} hrs/week marketing — consider the recommended goal or more WhatsApp follow-ups.`,
+    );
+    level = "warn";
+  }
+  if (reels >= 4 && hours <= 3) {
+    messages.push(`4+ Reels/week is hard in ~${hours} hours — the plan may overload you.`);
+    level = level === "block" ? "block" : "warn";
+  }
+  if (ordersPerWeek > 25 && reels >= 4 && hours <= 5) {
+    messages.push("This goal + Reel load is very unlikely solo — use recommended goal or cut Reels to 1–2/week.");
+    level = "block";
+  }
+  if (hours <= 1 && ordersPerWeek > 8) {
+    messages.push("~1 hour/week cannot sustain this order target — lower the goal or add marketing time.");
+    level = "block";
+  }
+
+  return { level, messages, ordersPerWeek };
+}
+
+function syncRevenueScopeLabels() {
+  const scope =
+    generatorForm.querySelector('input[name="campaignScope"]:checked')?.value || "single_sku";
+  const label = document.querySelector("#currentRevenueLabel");
+  const hint = document.querySelector("#currentRevenueHint");
+  if (!label || !hint) return;
+  if (scope === "whole_brand") {
+    label.textContent = "Last 30 days brand revenue (₹)";
+    hint.textContent = "All products combined for the last 30 days.";
+  } else {
+    label.textContent = "Last 30 days revenue for this product (₹)";
+    hint.textContent = "Use 0 if this SKU never sold. Use brand total only if you cannot split.";
+  }
+}
+
+function syncDeliveryAreaHint() {
+  const suggest = document.querySelector("#deliveryAreaSuggest");
+  const where = generatorForm.elements.namedItem("whereLive")?.value?.trim() || "";
+  const delivery = generatorForm.elements.namedItem("deliveryArea");
+  if (!suggest || !delivery) return;
+
+  if (!where) {
+    suggest.classList.add("hidden");
+    suggest.innerHTML = "";
+    return;
+  }
+
+  const deliveryVal = delivery.value.trim();
+  if (!deliveryVal) {
+    suggest.classList.remove("hidden");
+    suggest.innerHTML = `Customers live in: <strong>${escapeHtml(where)}</strong>. <button type="button" id="applyDeliverySuggest">Use as delivery area</button>`;
+    return;
+  }
+
+  const whereLow = where.toLowerCase();
+  const delLow = deliveryVal.toLowerCase();
+  if (!whereLow.includes(delLow) && !delLow.includes(whereLow)) {
+    suggest.classList.remove("hidden");
+    suggest.textContent = `Note: customer areas (${where}) differ from delivery area — OK if you deliver wider.`;
+    return;
+  }
+
+  suggest.classList.add("hidden");
+  suggest.innerHTML = "";
+}
+
+function getDiscoveryFindings() {
+  return {
+    whoFound: document.querySelector("#whoFound")?.value?.trim() || "",
+    areasFound: document.querySelector("#areasFound")?.value?.trim() || "",
+    substituteFound: document.querySelector("#substituteFound")?.value?.trim() || "",
+    hesitationFound: document.querySelector("#hesitationFound")?.value || "",
+  };
+}
+
+function isDiscoveryFindingsAdequate(findings) {
+  const substantive = [findings.whoFound, findings.areasFound, findings.substituteFound].filter(
+    (t) => t.length >= 10,
+  ).length;
+  return substantive >= 2;
+}
+
+function updateDiscoveryMinBar() {
+  const findings = getDiscoveryFindings();
+  const adequate = isDiscoveryFindingsAdequate(findings);
+  const hint = document.querySelector("#discoveryMinBarHint");
+  if (!hint) return;
+  hint.classList.toggle("hidden", adequate);
+  hint.textContent = adequate
+    ? ""
+    : "Add real notes from 5+ conversations — at least 2 fields with 10+ characters each (who, areas, or substitute).";
+}
+
+function renderBriefAuditTrail(input) {
+  const panel = document.querySelector("#briefAuditTrail");
+  const body = document.querySelector("#briefAuditBody");
+  if (!panel || !body) return;
+  if (!currentPlan) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+  const scopeLabel =
+    input.campaignScope === "whole_brand" ? "Whole brand" : `SKU: ${input.product}`;
+  const rows = [
+    ["Customer", input.audience || "—"],
+    ["Goal", input.revenueGoal || "—"],
+    ["Product", `${input.product} @ ${input.price}`],
+    ["Scope", scopeLabel],
+    ["Promo", input.promoHook || "—"],
+    ["Channels", (input.channels || []).join(", ") || "—"],
+    ["Capacity", input.contentCapacity || "—"],
+    ["Delivery", input.deliveryArea || "—"],
+    ["Orders via", input.orderChannel || "—"],
+  ];
+  body.innerHTML = rows
+    .map(
+      ([label, value]) =>
+        `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`,
+    )
+    .join("");
+}
+
+function renderWhatsappOpsBlock(pack) {
+  if (!pack) return "";
+  return `
+    <div class="wa-ops-block">
+      <h5>When they reply</h5>
+      <div class="wa-ops-row">
+        <dt>If they say YES</dt>
+        <dd>${escapeHtml(pack.replyYesScript || "—")}</dd>
+        <button class="copy-btn small" data-copy-text="${escapeHtml(pack.replyYesScript || "")}" type="button">Copy YES reply</button>
+      </div>
+      <div class="wa-ops-row">
+        <dt>Order confirmed</dt>
+        <dd>${escapeHtml(pack.orderConfirmScript || "—")}</dd>
+        <button class="copy-btn small" data-copy-text="${escapeHtml(pack.orderConfirmScript || "")}" type="button">Copy confirm</button>
+      </div>
+      <div class="wa-ops-row">
+        <dt>Delivery day</dt>
+        <dd>${escapeHtml(pack.deliveryScript || "—")}</dd>
+        <button class="copy-btn small" data-copy-text="${escapeHtml(pack.deliveryScript || "")}" type="button">Copy delivery</button>
+      </div>
+      <h5>Objection replies</h5>
+      <div class="wa-objections">
+        <div class="wa-ops-row">
+          <dt>Price</dt>
+          <dd>${escapeHtml(pack.objectionPrice || "—")}</dd>
+          <button class="copy-btn small" data-copy-text="${escapeHtml(pack.objectionPrice || "")}" type="button">Copy</button>
+        </div>
+        <div class="wa-ops-row">
+          <dt>Trust</dt>
+          <dd>${escapeHtml(pack.objectionTrust || "—")}</dd>
+          <button class="copy-btn small" data-copy-text="${escapeHtml(pack.objectionTrust || "")}" type="button">Copy</button>
+        </div>
+        <div class="wa-ops-row">
+          <dt>Oily / taste</dt>
+          <dd>${escapeHtml(pack.objectionOily || "—")}</dd>
+          <button class="copy-btn small" data-copy-text="${escapeHtml(pack.objectionOily || "")}" type="button">Copy</button>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function normalizePlanClient(plan, input) {
@@ -491,6 +712,13 @@ function normalizePlanClient(plan, input) {
           whoToMessage: exp.whoToMessage || waPack.whoToMessage,
           sendTime: exp.sendTime || waPack.sendTime,
           replyScript: exp.replyScript || waPack.replyScript,
+          contactListGuide: exp.contactListGuide || waPack.contactListGuide,
+          replyYesScript: exp.replyYesScript || waPack.replyYesScript,
+          orderConfirmScript: exp.orderConfirmScript || waPack.orderConfirmScript,
+          deliveryScript: exp.deliveryScript || waPack.deliveryScript,
+          objectionPrice: exp.objectionPrice || waPack.objectionPrice,
+          objectionTrust: exp.objectionTrust || waPack.objectionTrust,
+          objectionOily: exp.objectionOily || waPack.objectionOily,
           cta: isEmptyExpField(exp.cta) ? waPack.message.slice(0, 100) : exp.cta,
           metric: isEmptyExpField(exp.metric) ? waPack.metric : exp.metric,
           decisionRule: isEmptyExpField(exp.decisionRule)
@@ -515,6 +743,13 @@ function normalizePlanClient(plan, input) {
         whoToMessage: waPack.whoToMessage,
         sendTime: waPack.sendTime,
         replyScript: waPack.replyScript,
+        contactListGuide: waPack.contactListGuide,
+        replyYesScript: waPack.replyYesScript,
+        orderConfirmScript: waPack.orderConfirmScript,
+        deliveryScript: waPack.deliveryScript,
+        objectionPrice: waPack.objectionPrice,
+        objectionTrust: waPack.objectionTrust,
+        objectionOily: waPack.objectionOily,
         cta: waPack.message.slice(0, 100),
         metric: waPack.metric,
         decisionRule: "Under 2 replies? Send a personal voice note on day 3.",
@@ -886,6 +1121,22 @@ function getFormInput() {
 
   const capacityObj = { reelsPerWeek, whatsappBroadcasts, storiesPerWeek, onCamera, hoursPerWeek };
   const contentCapacity = buildContentCapacity(capacityObj);
+  const campaignScope = data.get("campaignScope")?.toString() || "single_sku";
+  const capacityRisk = analyzeCapacityRisk({
+    ...{
+      currentRevenue: formatRupee(parseNumber(revenueRaw)),
+      stretchGoalAmount,
+      goalAmount: stretchGoalAmount,
+      goalDays,
+      brandStage: data.get("brandStage")?.toString() || "",
+      price: formatRupee(parseNumber(priceRaw)),
+      goalChoice,
+      reelsPerWeek,
+      whatsappBroadcasts,
+      hoursPerWeek,
+      channels: data.getAll("channels").map((c) => c.toString()),
+    },
+  });
 
   const audience = data.get("audience")?.toString().trim() || "";
   const hesitationLabel = data.get("hesitationLabel")?.toString().trim() || data.get("hesitation")?.toString() || "";
@@ -893,6 +1144,7 @@ function getFormInput() {
   return {
     brandName: data.get("brandName")?.toString().trim() || "",
     category: resolveCategory(data),
+    campaignScope,
     product: data.get("product")?.toString().trim() || "",
     price: formatRupee(parseNumber(priceRaw)),
     productBundle,
@@ -922,6 +1174,8 @@ function getFormInput() {
     storiesPerWeek,
     onCamera,
     hoursPerWeek,
+    capacityRiskLevel: capacityRisk.level,
+    capacityNote: capacityRisk.messages.join(" "),
     brandTone: data.get("brandTone")?.toString().trim() || "",
     brandMission: data.get("brandMission")?.toString().trim() || "",
     brandDifferentiation: data.get("brandDifferentiation")?.toString().trim() || "",
@@ -987,7 +1241,10 @@ function showSetupStep(step) {
   document.querySelector("#openBriefBtn").classList.toggle("hidden", step !== 5);
   document.querySelector("#step5Hint")?.classList.toggle("hidden", step !== 5);
   showStatus(document.querySelector("#wizardStepError"), "");
-  if (step === 4) void renderGoalIntelligence();
+  if (step === 4) {
+    void renderGoalIntelligence();
+    syncDeliveryAreaHint();
+  }
   updateDraftState();
   scheduleWizardDraftSave();
 }
@@ -1075,6 +1332,20 @@ function renderGoalIntelligence() {
 
   const capField = generatorForm.elements.namedItem("contentCapacity");
   if (capField) capField.value = input.contentCapacity;
+
+  const blockWarn = document.querySelector("#capacityBlockWarning");
+  const risk = analyzeCapacityRisk(input);
+  if (blockWarn) {
+    if (risk.messages.length) {
+      blockWarn.textContent = risk.messages.join(" ");
+      blockWarn.classList.remove("hidden");
+      blockWarn.classList.toggle("warn", risk.level !== "block");
+      blockWarn.classList.toggle("inline-error", risk.level === "block");
+    } else {
+      blockWarn.classList.add("hidden");
+      blockWarn.textContent = "";
+    }
+  }
 }
 
 function applyInputToForm(input) {
@@ -1138,6 +1409,12 @@ function applyInputToForm(input) {
   generatorForm.querySelectorAll('input[name="channels"]').forEach((checkbox) => {
     checkbox.checked = channels.includes(checkbox.value);
   });
+
+  const scope = input.campaignScope || "single_sku";
+  generatorForm.querySelectorAll('input[name="campaignScope"]').forEach((radio) => {
+    radio.checked = radio.value === scope;
+  });
+  syncRevenueScopeLabels();
 
   discoveryMode = Boolean(input.discoveryMode);
   discoveryOverride = Boolean(input.discoveryOverride);
@@ -1334,14 +1611,21 @@ async function openDiscoveryWeek() {
 
 async function synthesizeDiscovery() {
   const input = getFormInput();
-  const findings = {
-    whoFound: document.querySelector("#whoFound").value,
-    areasFound: document.querySelector("#areasFound").value,
-    substituteFound: document.querySelector("#substituteFound").value,
-    hesitationFound: document.querySelector("#hesitationFound").value,
-  };
+  const findings = getDiscoveryFindings();
   const status = document.querySelector("#discoveryStatus");
   const btn = document.querySelector("#synthesizeDiscoveryBtn");
+
+  if (!isDiscoveryFindingsAdequate(findings)) {
+    if (
+      !confirm(
+        "Your notes look thin. We recommend 5+ real conversations first. Build customer summary anyway?",
+      )
+    ) {
+      updateDiscoveryMinBar();
+      return;
+    }
+  }
+
   showStatus(status, "Turning your notes into a customer summary…");
 
   try {
@@ -1725,6 +2009,7 @@ function updateDraftState() {
 
   if (!currentPlan) updateCampaignHeader();
   updateInsights();
+  if (currentPlan) renderBriefAuditTrail(input);
 }
 
 function fillSample() {
@@ -1757,6 +2042,8 @@ function normalizePlan(payload) {
 }
 
 function renderEmptyPlan() {
+  currentPlan = null;
+  document.querySelector("#briefAuditTrail")?.classList.add("hidden");
   commandCenter.className = "glass-card command-empty";
   commandCenter.innerHTML = `
     <span class="material-symbols-outlined empty-icon">campaign</span>
@@ -1802,6 +2089,7 @@ function renderPlan(plan, input) {
 
   renderCommandCenter(currentPlan, input);
   renderContentStudio(currentPlan.contentAssets || {}, input);
+  renderBriefAuditTrail(input);
   updateDraftState();
   void loadCampaignHistory();
 }
@@ -1810,12 +2098,14 @@ function renderExperimentDetail(exp) {
   const isWa = normalizeExperimentType(exp.type) === "whatsapp";
   const waExtra = isWa
     ? `
+        <div><dt>Contact list</dt><dd>${escapeHtml(exp.contactListGuide || exp.whoToMessage || "—")}</dd></div>
         <div><dt>Exact message</dt><dd class="wa-message-block">${escapeHtml(exp.message || "—")}</dd></div>
         <div><dt>Photo to share</dt><dd>${escapeHtml(exp.photoBrief || "—")}</dd></div>
         <div><dt>Who to message</dt><dd>${escapeHtml(exp.whoToMessage || "—")}</dd></div>
         <div><dt>When to send</dt><dd>${escapeHtml(exp.sendTime || "—")}</dd></div>
         <div><dt>If they hesitate</dt><dd>${escapeHtml(exp.replyScript || "—")}</dd></div>
         ${exp.message ? `<button class="copy-btn small" data-copy-text="${escapeHtml(exp.message)}" type="button">Copy message</button>` : ""}
+        ${renderWhatsappOpsBlock(exp)}
       `
     : "";
 
@@ -1960,6 +2250,7 @@ function renderWhatsappCard(messages, tags) {
       <div class="content-card-header"><h4>${escapeHtml(pack.title || "WhatsApp Broadcast")}</h4></div>
       ${tags ? `<div class="asset-tags-inline">${tags}</div>` : ""}
       <dl class="wa-pack-dl">
+        <div><dt>Contact list</dt><dd>${escapeHtml(pack.contactListGuide || pack.whoToMessage || "—")}</dd></div>
         <div><dt>Who to message</dt><dd>${escapeHtml(pack.whoToMessage || "—")}</dd></div>
         <div><dt>When</dt><dd>${escapeHtml(pack.sendTime || "—")}</dd></div>
         <div><dt>Photo</dt><dd>${escapeHtml(pack.photoBrief || "—")}</dd></div>
@@ -1967,6 +2258,7 @@ function renderWhatsappCard(messages, tags) {
       <p class="message-block">"${escapeHtml(text)}"</p>
       <p class="field-hint">If they hesitate: ${escapeHtml(pack.replyScript || "—")}</p>
       <button class="copy-btn" data-copy-text="${escapeHtml(text)}" type="button">Copy message</button>
+      ${renderWhatsappOpsBlock(pack)}
     </div>
   `;
     })
@@ -2002,6 +2294,16 @@ async function generatePlan() {
   if (input.discoveryMode) {
     showStatus(briefStatus, "Finish Discovery Week first, or use Build plan anyway.", true);
     return;
+  }
+
+  if (input.capacityRiskLevel === "block") {
+    if (
+      !confirm(
+        `${input.capacityNote || "This goal looks too ambitious for your time and content capacity."} Generate plan anyway?`,
+      )
+    ) {
+      return;
+    }
   }
 
   updateDraftState();
@@ -2240,6 +2542,7 @@ document.querySelectorAll(".tone-chip").forEach((chip) => {
 document.querySelector("#showDiscoveryReturn")?.addEventListener("click", () => {
   document.querySelector("#discoveryReturn").classList.remove("hidden");
   scheduleWizardDraftSave();
+  updateDiscoveryMinBar();
 });
 document.querySelector("#synthesizeDiscoveryBtn")?.addEventListener("click", () => void synthesizeDiscovery());
 document.querySelector("#forcePlanBtn")?.addEventListener("click", () => {
@@ -2251,8 +2554,35 @@ document.querySelector("#forcePlanBtn")?.addEventListener("click", () => {
 });
 
 ["#whoFound", "#areasFound", "#substituteFound", "#hesitationFound"].forEach((sel) => {
-  document.querySelector(sel)?.addEventListener("input", scheduleWizardDraftSave);
-  document.querySelector(sel)?.addEventListener("change", scheduleWizardDraftSave);
+  document.querySelector(sel)?.addEventListener("input", () => {
+    scheduleWizardDraftSave();
+    updateDiscoveryMinBar();
+  });
+  document.querySelector(sel)?.addEventListener("change", () => {
+    scheduleWizardDraftSave();
+    updateDiscoveryMinBar();
+  });
+});
+
+generatorForm.querySelectorAll('input[name="campaignScope"]').forEach((radio) => {
+  radio.addEventListener("change", () => {
+    syncRevenueScopeLabels();
+    updateDraftState();
+    scheduleWizardDraftSave();
+  });
+});
+
+document.addEventListener("click", (event) => {
+  if (event.target?.id === "applyDeliverySuggest") {
+    const where = generatorForm.elements.namedItem("whereLive")?.value?.trim();
+    const delivery = generatorForm.elements.namedItem("deliveryArea");
+    if (where && delivery) {
+      delivery.value = where;
+      syncDeliveryAreaHint();
+      scheduleWizardDraftSave();
+      updateDraftState();
+    }
+  }
 });
 
 document.querySelector("#structureFailuresBtn")?.addEventListener("click", () => void structureFailures());
@@ -2282,7 +2612,10 @@ generatorForm.addEventListener("input", () => {
     currentPlan = null;
     renderEmptyPlan();
   }
-  if (currentSetupStep === 4) renderGoalIntelligence();
+  if (currentSetupStep === 4) {
+    renderGoalIntelligence();
+    syncDeliveryAreaHint();
+  }
   updateDraftState();
   scheduleWizardDraftSave();
 });
@@ -2312,6 +2645,7 @@ if (!maybeResumeWizardDraft()) {
   showSetupStep(1);
   applyTrackerDraft(null);
 }
+syncRevenueScopeLabels();
 updateDraftState();
 setRingProgress(0);
 void loadCampaignHistory();

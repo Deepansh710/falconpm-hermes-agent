@@ -227,6 +227,17 @@
               <p class="field-hint">The hero SKU for this 30-day sprint—not your full catalog.</p>
               <input name="product" placeholder="e.g. Aam ka Achar" required minlength="2" />
             </div>
+            <fieldset class="campaign-scope-field">
+              <legend class="field-label">This campaign is for</legend>
+              <label class="scope-option">
+                <input type="radio" name="campaignScope" value="single_sku" checked />
+                One product (hero SKU above)
+              </label>
+              <label class="scope-option">
+                <input type="radio" name="campaignScope" value="whole_brand" />
+                Whole brand (multiple products)
+              </label>
+            </fieldset>
             <div class="form-row">
               <div class="form-block">
                 <label class="field-label">Price (₹)</label>
@@ -234,8 +245,8 @@
                 <input name="price" type="number" min="1" step="1" placeholder="399" required />
               </div>
               <div class="form-block">
-                <label class="field-label">Current monthly revenue (₹)</label>
-                <p class="field-hint">Last 30 days for this <strong>brand</strong> (all products). New SKU? Use brand total, or 0 if pre-revenue.</p>
+                <label class="field-label" id="currentRevenueLabel">Last 30 days revenue for this product (₹)</label>
+                <p class="field-hint" id="currentRevenueHint">Use 0 if this SKU never sold. Use brand total only if you cannot split.</p>
                 <input name="currentRevenue" type="number" min="0" step="1" placeholder="10000" required />
               </div>
             </div>
@@ -473,9 +484,12 @@
               </div>
               <div class="form-block">
                 <label class="field-label">Delivery area</label>
-                <input name="deliveryArea" placeholder="e.g. Faridabad + Delhi NCR" required />
+                <p class="field-hint delivery-area-suggest hidden" id="deliveryAreaSuggest"></p>
+                <input name="deliveryArea" id="deliveryArea" placeholder="e.g. Faridabad + Delhi NCR" required />
               </div>
             </div>
+
+            <p class="field-hint warn hidden" id="capacityBlockWarning"></p>
 
             <p class="form-section-title">How much can you do each week?</p>
             <div class="form-row">
@@ -581,6 +595,14 @@
           <div id="campaignHistoryList" class="history-list">
             <p class="muted">Loading past campaigns…</p>
           </div>
+        </div>
+
+        <div class="glass-card brief-audit-trail hidden" id="briefAuditTrail">
+          <div class="brief-audit-header">
+            <h4><span class="material-symbols-outlined text-primary">fact_check</span> Plan built from</h4>
+            <span class="label muted">Your inputs — not AI guesses</span>
+          </div>
+          <dl class="brief-audit-dl" id="briefAuditBody"></dl>
         </div>
 
         <div id="commandCenter" class="command-empty">
@@ -792,6 +814,7 @@
             <option value="unknown">Don't know brand</option>
           </select></label>
           <button class="btn-primary" id="synthesizeDiscoveryBtn" type="button">Build customer summary</button>
+          <p class="field-hint warn hidden" id="discoveryMinBarHint"></p>
         </div>
         <div class="coach-panel-actions">
           <button class="btn-ghost" id="showDiscoveryReturn" type="button">I'm back — here's what I learned</button>

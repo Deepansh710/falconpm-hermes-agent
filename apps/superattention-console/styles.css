@@ -2676,3 +2676,130 @@ button {
   margin-top: 8px;
   min-height: 1.2em;
 }
+
+/* V1.6 — audit trail, WA ops, scope, capacity */
+.campaign-scope-field {
+  border: 0;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.campaign-scope-field legend {
+  margin-bottom: 8px;
+}
+
+.scope-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.brief-audit-trail {
+  margin-bottom: 20px;
+  padding: 16px 20px;
+}
+
+.brief-audit-trail.hidden {
+  display: none;
+}
+
+.brief-audit-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.brief-audit-header h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+}
+
+.brief-audit-dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.brief-audit-dl div {
+  padding: 10px 12px;
+  border: 1px solid rgba(70, 69, 84, 0.3);
+  border-radius: var(--radius-md);
+}
+
+.brief-audit-dl dt {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--outline);
+  margin-bottom: 4px;
+}
+
+.brief-audit-dl dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.delivery-area-suggest {
+  margin-bottom: 6px;
+}
+
+.delivery-area-suggest button {
+  margin-left: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--primary);
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.wa-ops-block {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(70, 69, 84, 0.25);
+}
+
+.wa-ops-block h5 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--outline);
+}
+
+.wa-ops-row {
+  margin-bottom: 10px;
+}
+
+.wa-ops-row dt {
+  font-size: 11px;
+  color: var(--outline);
+  margin-bottom: 4px;
+}
+
+.wa-ops-row dd {
+  margin: 0 0 6px;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.wa-objections {
+  display: grid;
+  gap: 8px;
+}
+
+#capacityBlockWarning {
+  margin: 12px 0 0;
+}

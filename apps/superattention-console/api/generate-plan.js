@@ -78,6 +78,29 @@ function enrichWhatsappPack(wa, input, weekIndex) {
   const product = input.product || "product";
   const promo = input.promoHook || "";
   const bundle = input.productBundle || input.offer || product;
+  const brand = input.brandName || "our brand";
+  const channel = (input.orderChannel || "").toLowerCase();
+  const isCod = channel.includes("cod");
+  const paymentLine = isCod
+    ? `Cash on delivery when we deliver to ${area}.`
+    : `Please UPI ${price} before dispatch and send payment screenshot here.`;
+  const ops = {
+    contactListGuide: `Week 1: message 20–30 warm contacts in ${area}. Week 2+: add 10–15 warm leads only.`,
+    replyYesScript: `Thanks! Order: ${bundle} at ${price}. ${paymentLine} Share full address + delivery day.`,
+    orderConfirmScript: `Order confirmed — delivery on [DAY]. ${isCod ? "COD ready." : "Payment received."}`,
+    deliveryScript: `Your ${product} is out for delivery today between [TIME]. Reply to reschedule.`,
+    objectionPrice: `Fair question — ${price} for ${bundle}. ${promo ? `${promo}. ` : ""}Small-batch quality.`,
+    objectionTrust: `${brand} is founder-run — I deliver in ${area} myself.`,
+    objectionOily: `Less oil than typical market pickles — worth one try.`,
+  };
+  const hesitation = (input.hesitationLabel || input.hesitation || "").toLowerCase();
+  let replyScript = wa.replyScript;
+  if (!replyScript) {
+    if (hesitation.includes("price")) replyScript = ops.objectionPrice;
+    else if (hesitation.includes("trust") || hesitation.includes("unknown")) replyScript = ops.objectionTrust;
+    else if (hesitation.includes("oily") || hesitation.includes("taste")) replyScript = ops.objectionOily;
+    else replyScript = `If price: remind ${price}. If trust: offer founder delivery in ${area}.`;
+  }
   const baseMessage =
     wa.message ||
     `Hi! I make ${bundle} at ${price}. ${promo ? `${promo}. ` : ""}Reply YES if you want to order in ${area}.`;
@@ -92,9 +115,14 @@ function enrichWhatsappPack(wa, input, weekIndex) {
       wa.whoToMessage ||
       `20–30 warm contacts in ${area} (friends, neighbours, past buyers)`,
     sendTime: wa.sendTime || "Tue or Wed, 7–9pm",
-    replyScript:
-      wa.replyScript ||
-      `If price: remind ${price} and ${promo || "quality"}. If trust: offer founder delivery.`,
+    replyScript,
+    contactListGuide: wa.contactListGuide || ops.contactListGuide,
+    replyYesScript: wa.replyYesScript || ops.replyYesScript,
+    orderConfirmScript: wa.orderConfirmScript || ops.orderConfirmScript,
+    deliveryScript: wa.deliveryScript || ops.deliveryScript,
+    objectionPrice: wa.objectionPrice || ops.objectionPrice,
+    objectionTrust: wa.objectionTrust || ops.objectionTrust,
+    objectionOily: wa.objectionOily || ops.objectionOily,
     metric: wa.metric || "Reply rate and orders placed",
   };
 }
@@ -133,6 +161,13 @@ function enrichWhatsappExperiment(exp, waPack, input) {
     whoToMessage: exp.whoToMessage || waPack.whoToMessage,
     sendTime: exp.sendTime || waPack.sendTime,
     replyScript: exp.replyScript || waPack.replyScript,
+    contactListGuide: exp.contactListGuide || waPack.contactListGuide,
+    replyYesScript: exp.replyYesScript || waPack.replyYesScript,
+    orderConfirmScript: exp.orderConfirmScript || waPack.orderConfirmScript,
+    deliveryScript: exp.deliveryScript || waPack.deliveryScript,
+    objectionPrice: exp.objectionPrice || waPack.objectionPrice,
+    objectionTrust: exp.objectionTrust || waPack.objectionTrust,
+    objectionOily: exp.objectionOily || waPack.objectionOily,
     cta: isEmptyField(exp.cta) ? waPack.message.slice(0, 100) : exp.cta,
     metric: isEmptyField(exp.metric) ? waPack.metric : exp.metric,
     decisionRule: isEmptyField(exp.decisionRule)
@@ -250,6 +285,24 @@ PRICE LOCK (mandatory):
 - Use product bundle exactly: ${productBundle}
 `;
 
+  const capacityBlock = input.capacityNote
+    ? `
+CAPACITY CONSTRAINT (mandatory):
+- Founder capacity: ${capacity}
+- Risk note: ${input.capacityNote}
+- Do NOT assign more weekly orders, Reels, or broadcasts than this founder can execute solo.
+- Prefer fewer, higher-quality WhatsApp follow-ups over scaling content volume.
+`
+    : `
+CAPACITY CONSTRAINT:
+- Respect content capacity: ${capacity}. Do not exceed Reels/week or marketing hours stated.
+`;
+
+  const scopeLine =
+    input.campaignScope === "whole_brand"
+      ? "Campaign scope: whole brand (multiple products)."
+      : `Campaign scope: single hero SKU — ${input.product}.`;
+
   return `
 You are superattention.ai, an AI growth coach for early Indian D2C brands.
 
@@ -258,6 +311,7 @@ Turn attention into revenue. Be specific, practical, and honest about what a sol
 Brand:
 - Name: ${input.brandName}
 - Category: ${input.category}
+- ${scopeLine}
 - Current monthly revenue: ${input.currentRevenue}
 - Revenue goal (active): ${input.revenueGoal}
 - Founder entered stretch: ${input.stretchGoal || input.revenueGoal}
@@ -288,6 +342,7 @@ ${channelList}
 ${channelLimit}
 ${onlyTheseChannels}
 ${priceLock}
+${capacityBlock}
 ${phasedBlock}
 ${learningsBlock}
 
@@ -332,14 +387,18 @@ Use this exact structure:
           "photoBrief": "for WhatsApp only: what photo to attach",
           "whoToMessage": "for WhatsApp only: who to message",
           "sendTime": "for WhatsApp only: best send time",
-          "replyScript": "for WhatsApp only: 1-line reply if they hesitate"
+          "replyScript": "for WhatsApp only: 1-line reply if they hesitate",
+          "contactListGuide": "for WhatsApp only: warm vs cold list guidance",
+          "replyYesScript": "for WhatsApp only: reply when they say YES",
+          "orderConfirmScript": "for WhatsApp only: after payment/COD confirm",
+          "deliveryScript": "for WhatsApp only: delivery day message"
         }
       ]
     }
   ],
   "contentAssets": {
     "reels": [{"title": "title", "hook": "hook", "script": "short script", "cta": "cta"}],
-    "whatsapp": [{"title": "title", "message": "exact copy-paste broadcast", "photoBrief": "photo instructions", "whoToMessage": "who to message", "sendTime": "when to send", "replyScript": "reply if they hesitate", "metric": "success metric"}],
+    "whatsapp": [{"title": "title", "message": "exact copy-paste broadcast", "photoBrief": "photo instructions", "whoToMessage": "who to message", "sendTime": "when to send", "replyScript": "reply if they hesitate", "contactListGuide": "list guidance", "replyYesScript": "YES reply", "orderConfirmScript": "order confirm", "deliveryScript": "delivery msg", "objectionPrice": "price objection", "objectionTrust": "trust objection", "objectionOily": "oily objection", "metric": "success metric"}],
     "website": [{"title": "title", "copy": "copy"}],
     "linkedin": [{"title": "title", "post": "post"}]
   },
