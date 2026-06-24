@@ -230,14 +230,16 @@
             </div>
             <fieldset class="campaign-scope-field">
               <legend class="field-label">This campaign is for</legend>
-              <label class="scope-option">
-                <input type="radio" name="campaignScope" value="single_sku" checked />
-                One product (hero SKU above)
-              </label>
-              <label class="scope-option">
-                <input type="radio" name="campaignScope" value="whole_brand" />
-                Whole brand (multiple products)
-              </label>
+              <div class="scope-options">
+                <label class="scope-option">
+                  <input type="radio" name="campaignScope" value="single_sku" checked />
+                  <span>One product (hero SKU above)</span>
+                </label>
+                <label class="scope-option">
+                  <input type="radio" name="campaignScope" value="whole_brand" />
+                  <span>Whole brand (multiple products)</span>
+                </label>
+              </div>
             </fieldset>
             <div class="form-row">
               <div class="form-block">
@@ -464,7 +466,6 @@
             <div class="glass-card goal-intel-card" id="goalIntelCard">
               <h4>Is this goal realistic?</h4>
               <p class="field-hint" id="goalEnteredNote">You entered: —</p>
-              <p class="field-hint goal-active-note" id="goalActiveNote">Active goal for your plan: —</p>
               <p class="muted" id="goalIntelSummary">Fill price and revenue to see the math.</p>
               <div class="goal-options" id="goalOptions">
                 <label class="goal-option">

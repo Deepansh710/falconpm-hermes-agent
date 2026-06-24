@@ -582,12 +582,15 @@ function buildGoalNarrative(intel, input) {
   const activeRec = input.goalChoice === "recommended";
 
   if (intel.isAbsurd) {
-    return `Your entered goal (${stretch}) is a big jump. Start with ${rec} (~${intel.recommendedOrdersPerWeek} orders/week on WhatsApp). Prove repeat orders before scaling.`;
+    return `Big jump from current revenue — prove ${rec} on WhatsApp before scaling.`;
   }
   if (activeRec) {
-    return `Active plan goal: ${rec} (~${intel.recommendedOrdersPerWeek} orders/week). You entered ${stretch} — switch to "Use my number" if you want the plan built for that instead.`;
+    return `Plan built for ${rec}. Pick "Use my number" above to plan for ${stretch} instead.`;
   }
-  return `Active plan goal: ${stretch} (~${intel.stretchOrdersPerWeek} orders/week). Recommended safer target: ${rec} (~${intel.recommendedOrdersPerWeek} orders/week).`;
+  if (intel.isAggressive) {
+    return `Plan uses phased prove-then-scale for ${stretch}. Safer starting point: ${rec}.`;
+  }
+  return "";
 }
 
 function allowedExperimentTypes(channels = []) {
@@ -1471,15 +1474,14 @@ function renderGoalIntelligence() {
   const channelWarn = document.querySelector("#channelWarning");
   const capacityWarn = document.querySelector("#capacityWarning");
   const enteredNote = document.querySelector("#goalEnteredNote");
-  const activeNote = document.querySelector("#goalActiveNote");
   const goalOptions = document.querySelector("#goalOptions");
 
   if (!intel.ready) {
+    summary.classList.remove("hidden");
     summary.textContent = isGoalMathReady()
       ? intel.explanation
       : "Fill price (Step 1) and revenue goal to see the math.";
     if (enteredNote) enteredNote.textContent = "You entered: —";
-    if (activeNote) activeNote.textContent = "Active goal for your plan: —";
     if (narrativeEl) narrativeEl.textContent = "";
     goalOptions?.classList.add("hidden");
     warn?.classList.add("hidden");
@@ -1489,16 +1491,10 @@ function renderGoalIntelligence() {
   }
 
   goalOptions?.classList.remove("hidden");
-  summary.textContent = intel.explanation;
+  summary.classList.add("hidden");
+  summary.textContent = "";
   if (enteredNote) {
-    enteredNote.textContent = `You entered: ${compactGoal(intel.stretchGoalString)} (~${intel.stretchOrdersPerWeek} orders/week)`;
-  }
-  if (activeNote) {
-    const activeLabel =
-      input.goalChoice === "recommended"
-        ? `Recommended (safer): ${compactGoal(intel.recommendedGoalString)}`
-        : `Your number: ${compactGoal(intel.stretchGoalString)}`;
-    activeNote.textContent = `Active goal for your plan: ${activeLabel} (~${intel.ordersPerWeek} orders/week)`;
+    enteredNote.textContent = `You entered ${compactGoal(intel.stretchGoalString)} in ${input.goalDays || 30} days (~${intel.stretchOrdersPerWeek} orders/week at ${input.price || "your price"}).`;
   }
 
   document.querySelector("#recommendedGoalLabel").textContent = `Recommended (safer): ${compactGoal(intel.recommendedGoalString)}`;
@@ -1511,11 +1507,15 @@ function renderGoalIntelligence() {
     warn.textContent =
       "This goal is a big jump from where you are. We strongly recommend starting with the recommended goal.";
   } else if (intel.isAggressive) {
-    warn.textContent = "Stretch goal selected — your plan will split Phase 1 (prove it) and Phase 2 (scale).";
+    warn.textContent = "Stretch goal — plan splits Phase 1 (prove) and Phase 2 (scale).";
   }
 
-  narrativeEl.textContent = buildGoalNarrative(intel, input);
-  goalCoachCache = narrativeEl.textContent;
+  const narrative = buildGoalNarrative(intel, input);
+  if (narrativeEl) {
+    narrativeEl.textContent = narrative;
+    narrativeEl.classList.toggle("hidden", !narrative);
+  }
+  goalCoachCache = narrative;
 
   const stage = input.brandStage || "";
   const channelCount = input.channels.length;
