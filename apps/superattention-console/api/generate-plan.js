@@ -429,11 +429,114 @@ function extractJsonText(text) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const raw = (fenced ? fenced[1] : text).trim();
   const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) {
+  if (start === -1) {
     return raw;
   }
-  return raw.slice(start, end + 1);
+
+  // Walk from the first "{" tracking brace/bracket depth (respecting strings
+  // and escapes) to find where the top-level object actually closes. This
+  // strips trailing prose after the JSON. If it never balances — a truncated
+  // response — return through end-of-text so repairTruncatedJson can finish
+  // it, rather than cutting at an inner "}" and dropping trailing keys.
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < raw.length; i += 1) {
+    const char = raw[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === "{" || char === "[") depth += 1;
+    if (char === "}" || char === "]") {
+      depth -= 1;
+      if (depth === 0) {
+        return raw.slice(start, i + 1);
+      }
+    }
+  }
+
+  return raw.slice(start);
+}
+
+// Fix invalid escape sequences the model sometimes emits inside strings.
+// JSON only allows \" \\ \/ \b \f \n \r \t \uXXXX. Anything else — most
+// often \' around Hinglish apostrophes, a stray backslash, or a raw
+// control char — makes JSON.parse throw "Bad escaped character".
+function sanitizeJsonEscapes(text) {
+  const VALID_ESCAPE = new Set(['"', "\\", "/", "b", "f", "n", "r", "t"]);
+  let out = "";
+  let inString = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+
+    if (!inString) {
+      if (char === '"') inString = true;
+      out += char;
+      continue;
+    }
+
+    // inside a JSON string
+    if (char === '"') {
+      inString = false;
+      out += char;
+      continue;
+    }
+
+    if (char === "\\") {
+      const next = text[i + 1];
+
+      if (next === undefined) {
+        out += "\\\\"; // trailing backslash -> literal backslash
+        continue;
+      }
+      if (next === "u") {
+        const hex = text.slice(i + 2, i + 6);
+        if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+          out += "\\u" + hex; // valid unicode escape
+          i += 5;
+        } else {
+          out += "\\\\"; // malformed \u -> literal backslash
+        }
+        continue;
+      }
+      if (VALID_ESCAPE.has(next)) {
+        out += "\\" + next; // already valid pair, keep as-is
+        i += 1;
+        continue;
+      }
+      if (next === "'") {
+        out += "'"; // apostrophe never needs escaping in JSON
+        i += 1;
+        continue;
+      }
+      out += "\\\\"; // any other invalid escape -> literal backslash
+      continue;
+    }
+
+    // raw control chars are illegal inside JSON strings — escape them
+    if (char === "\n") { out += "\\n"; continue; }
+    if (char === "\r") { out += "\\r"; continue; }
+    if (char === "\t") { out += "\\t"; continue; }
+
+    out += char;
+  }
+
+  return out;
 }
 
 function repairTruncatedJson(text) {
@@ -485,12 +588,21 @@ function repairTruncatedJson(text) {
 function parsePlanJson(text) {
   const cleaned = extractJsonText(text);
 
+  // 1. Fast path: already-valid JSON.
   try {
     return JSON.parse(cleaned);
-  } catch {
-    const repaired = repairTruncatedJson(cleaned);
-    return JSON.parse(repaired);
-  }
+  } catch {}
+
+  // 2. Fix invalid escape sequences / raw control chars.
+  const sanitized = sanitizeJsonEscapes(cleaned);
+  try {
+    return JSON.parse(sanitized);
+  } catch {}
+
+  // 3. Repair truncation on top of the sanitized text (handles the case
+  //    where the response is BOTH truncated and has bad escapes).
+  const repaired = repairTruncatedJson(sanitized);
+  return JSON.parse(repaired);
 }
 
 async function requestAnthropic({ model, maxTokens, prompt }) {
@@ -759,3 +871,6 @@ module.exports = async function handler(req, res) {
 module.exports.buildPrompt = buildPrompt;
 module.exports.validateInput = validateInput;
 module.exports.normalizePlan = normalizePlan;
+module.exports.parsePlanJson = parsePlanJson;
+module.exports.sanitizeJsonEscapes = sanitizeJsonEscapes;
+module.exports.repairTruncatedJson = repairTruncatedJson;

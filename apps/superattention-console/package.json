@@ -1,0 +1,12 @@
+{
+  "name": "superattention-console",
+  "version": "1.0.0",
+  "private": true,
+  "description": "superattention.ai Growth Console — V1 frontend + Vercel serverless API routes.",
+  "scripts": {
+    "test": "node --test \"api/*.test.js\""
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
