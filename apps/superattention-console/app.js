@@ -3322,6 +3322,7 @@ function updateBuyerGateQuestion() {
 function revealStep2Fields() {
   document.querySelector("#buyerGate")?.classList.add("hidden");
   document.querySelector("#step2Fields")?.classList.remove("hidden");
+  document.querySelector("#discoveryRestartLink")?.classList.remove("hidden");
 }
 
 function applyDiscoveryToBuyerFields(result, findings) {
@@ -3449,6 +3450,10 @@ document.querySelector("#buyerGateYes")?.addEventListener("click", () => {
   revealStep2Fields();
 });
 document.querySelector("#buyerGateNo")?.addEventListener("click", () => {
+  void openDiscoveryWeek();
+});
+document.querySelector("#discoveryRestartLink")?.addEventListener("click", () => {
+  document.querySelector("#step2Fields")?.classList.add("hidden");
   void openDiscoveryWeek();
 });
 

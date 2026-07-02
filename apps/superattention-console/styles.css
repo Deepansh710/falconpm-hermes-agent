@@ -3315,3 +3315,17 @@ button {
 .channel-conditional.visible {
   display: flex;
 }
+
+.discovery-restart-link {
+  display: inline-block;
+  margin: 2px 0 14px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.discovery-restart-link:hover {
+  text-decoration: underline;
+}
