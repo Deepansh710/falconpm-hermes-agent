@@ -1329,10 +1329,25 @@ function getFormInput() {
   const promoHook = data.get("promoHook")?.toString().trim() || "";
 
   const reelsPerWeek = data.get("reelsPerWeek")?.toString() || "2";
-  const whatsappBroadcasts = data.get("whatsappBroadcasts")?.toString() || "yes";
-  const storiesPerWeek = data.get("storiesPerWeek")?.toString() || "no";
-  const onCamera = data.get("onCamera")?.toString() || "yes";
   const hoursPerWeek = data.get("hoursPerWeek")?.toString() || "3";
+
+  // Plan v2 capacity + goal fields
+  const winningGoal = data.get("winningGoal")?.toString() || "";
+  const whatsappContacts = data.get("whatsappContacts")?.toString().trim() || "";
+  const hasBroadcastList = data.get("hasBroadcastList")?.toString() || "";
+  const broadcastListSize = data.get("broadcastListSize")?.toString().trim() || "";
+  const whatsappFrequency = data.get("whatsappFrequency")?.toString() || "";
+  const instagramFollowers = data.get("instagramFollowers")?.toString() || "";
+  const cameraComfort = data.get("cameraComfort")?.toString() || "";
+  const instagramStories = data.get("instagramStories")?.toString() || "";
+  const channelsSel = data.getAll("channels").map((c) => c.toString());
+  const waSelected = channelsSel.some((c) => c.toLowerCase().includes("whatsapp"));
+
+  // Back-compat derivations so the (fenced) plan prompt still gets what it reads.
+  const whatsappBroadcasts = waSelected ? "yes" : "no";
+  const storiesPerWeek = /^yes$/i.test(instagramStories) ? "yes" : "no";
+  const onCamera = cameraComfort.startsWith("Yes") ? "yes" : "no";
+  const northStarMetric = winningGoalToMetric(winningGoal);
 
   const capacityObj = { reelsPerWeek, whatsappBroadcasts, storiesPerWeek, onCamera, hoursPerWeek };
   const contentCapacity = buildContentCapacity(capacityObj);
@@ -1396,11 +1411,30 @@ function getFormInput() {
     brandDifferentiation: data.get("brandDifferentiation")?.toString().trim() || "",
     brandStage: data.get("brandStage")?.toString().trim() || "",
     pastFailures: data.get("pastFailures")?.toString().trim() || "",
-    channels: data.getAll("channels").map((c) => c.toString()),
-    northStarMetric: data.get("northStarMetric")?.toString() || "orders",
+    channels: channelsSel,
+    northStarMetric,
+    winningGoal,
+    whatsappContacts,
+    hasBroadcastList,
+    broadcastListSize,
+    whatsappFrequency,
+    instagramFollowers,
+    cameraComfort,
+    instagramStories,
+    whatCanProve: data.get("whatCanProve")?.toString().trim() || "",
+    customerVoice: data.get("customerVoice")?.toString().trim() || "",
+    competitorsCantCopy: data.get("competitorsCantCopy")?.toString().trim() || "",
     discoveryMode: discoveryMode && !discoveryOverride,
     discoveryOverride,
   };
+}
+
+function winningGoalToMetric(winningGoal) {
+  const g = String(winningGoal || "").toLowerCase();
+  if (g.includes("list")) return "list_size";
+  if (g.includes("repeat")) return "repeat";
+  if (g.includes("test") || g.includes("messaging")) return "proof_of_hook";
+  return "orders";
 }
 
 function validateStep(step) {
@@ -1410,32 +1444,33 @@ function validateStep(step) {
     if (!data.get("brandName")?.toString().trim()) errors.push("Brand name is required.");
     if (!data.get("product")?.toString().trim()) errors.push("Product is required.");
     if (!parseNumber(data.get("price"))) errors.push("Enter a valid price.");
+    if (!data.get("orderChannel")) errors.push("Select how customers order.");
+    if (!data.get("deliveryArea")?.toString().trim()) errors.push("Where do you deliver? is required.");
   }
   if (step === 2) {
-    if (!data.get("audienceConfidence")) errors.push("Tell us how sure you are about your customer.");
-    const answers = getAudienceAnswers();
-    if (needsDiscovery(answers) && !data.get("audience")?.toString().trim() && !discoveryMode) {
-      errors.push("We need a short customer summary — try Discovery Week or click Help me write this clearly.");
+    const fieldsHidden = document.querySelector("#step2Fields")?.classList.contains("hidden");
+    if (fieldsHidden && !discoveryMode) {
+      errors.push("Answer the question above to continue.");
+    } else if (!discoveryMode) {
+      if (!data.get("audienceConfidence")) errors.push("Tell us how sure you are about your customer.");
+      const answers = getAudienceAnswers();
+      if (needsDiscovery(answers) && !data.get("audience")?.toString().trim()) {
+        errors.push("We need a short customer summary — try Discovery Week or click Help me write my customer summary.");
+      }
     }
   }
   if (step === 3) {
     if (!data.get("productBundle")?.toString().trim()) errors.push("Describe what's in the jar/box.");
   }
   if (step === 4) {
-    if (!parseNumber(data.get("goalAmount"))) errors.push("Enter a revenue goal.");
-    if (!data.get("orderChannel")) errors.push("Select how customers order.");
-    if (!data.get("deliveryArea")?.toString().trim()) errors.push("Delivery area is required.");
-    if (!data.getAll("channels").length) errors.push("Select at least one channel.");
+    if ((data.get("brandDifferentiation")?.toString().trim() || "").length < 10) {
+      errors.push("What makes you different: 10+ characters or use the coach.");
+    }
   }
   if (step === 5) {
-    const mission = data.get("brandMission")?.toString().trim() || "";
-    if (isJunkText(mission)) {
-      errors.push("Mission needs real substance — tap Help me write my mission or write 2–3 honest sentences.");
-    }
-    if ((data.get("brandDifferentiation")?.toString().trim() || "").length < 10) {
-      errors.push("Differentiation: 10+ characters or use the coach.");
-    }
-    if (!data.get("brandStage")) errors.push("Select your brand stage.");
+    if (!data.get("winningGoal")) errors.push("Pick what winning looks like.");
+    if (!parseNumber(data.get("goalAmount"))) errors.push("Enter a revenue goal.");
+    if (!data.getAll("channels").length) errors.push("Select at least one channel.");
   }
   showStatus(document.querySelector("#wizardStepError"), errors[0] || "", true);
   return errors;
@@ -1457,9 +1492,10 @@ function showSetupStep(step) {
   document.querySelector("#openBriefBtn").classList.toggle("hidden", step !== 5);
   document.querySelector("#step5Hint")?.classList.toggle("hidden", step !== 5);
   showStatus(document.querySelector("#wizardStepError"), "");
-  if (step === 4) {
+  if (step === 5) {
     void renderGoalIntelligence();
-    syncDeliveryAreaHint();
+    syncPlanConditionals();
+    syncCrossChannelWarnings();
   }
   updateDraftState();
   scheduleWizardDraftSave();
@@ -1853,14 +1889,17 @@ async function synthesizeDiscovery() {
     const result = await callCoach("discovery_synthesize", { input, findings });
     generatorForm.elements.namedItem("audience").value = result.audience || "";
     generatorForm.elements.namedItem("hesitationLabel").value = result.hesitationLabel || "";
+    // Auto-populate the Buyer fields from discovery findings + flag them.
+    applyDiscoveryToBuyerFields(result, findings);
     discoveryMode = false;
     discoveryOverride = false;
     discoveryPanel.classList.add("hidden");
+    revealStep2Fields();
     showStatus(status, result.confidenceNote || "Customer summary saved.");
     document.querySelector("#audienceCoachStatus").textContent =
       "Nice — you talked to real people. That's real data.";
     saveWizardDraft();
-    showSetupStep(3);
+    showSetupStep(2);
   } catch (error) {
     showStatus(status, error.message, true);
   } finally {
@@ -2907,7 +2946,7 @@ sidebarNav?.addEventListener("click", (event) => {
   if (link) switchView(link.dataset.view);
 });
 
-loadSample.addEventListener("click", fillSample);
+loadSample?.addEventListener("click", fillSample);
 generatorForm.addEventListener("input", () => {
   if (!currentCampaignId) {
     currentPlan = null;
@@ -3265,3 +3304,222 @@ void loadCampaignHistory();
     focusFirstPin();
   }
 })();
+
+/* ===================================================================
+   Wizard v2 wiring — Product / Buyer / Hook / Edge / Plan.
+   =================================================================== */
+
+// --- Buyer gate ---
+function updateBuyerGateQuestion() {
+  const el = document.querySelector("#buyerGateQuestion");
+  if (!el) return;
+  let product = generatorForm.elements.namedItem("product")?.value?.trim() || "";
+  if (!product) product = "your product";
+  else if (product.length > 30) product = product.slice(0, 30) + "…";
+  el.textContent = `Have you talked to someone who actually bought ${product}?`;
+}
+
+function revealStep2Fields() {
+  document.querySelector("#buyerGate")?.classList.add("hidden");
+  document.querySelector("#step2Fields")?.classList.remove("hidden");
+}
+
+function applyDiscoveryToBuyerFields(result, findings) {
+  const f = findings || {};
+  const set = (name, value, flag) => {
+    const el = generatorForm.elements.namedItem(name);
+    if (el && value) el.value = value;
+    if (value) {
+      const label = document.querySelector(`.from-discovery[data-discovery-for="${flag || name}"]`);
+      label?.classList.remove("hidden");
+    }
+  };
+  set("whoBuys", f.whoFound || f.whoBuys);
+  set("whereLive", f.areasFound || f.whereLive);
+  set("substitute", f.substituteFound || f.substitute);
+  const hes = generatorForm.elements.namedItem("hesitation");
+  if (hes && (result?.hesitationLabel || f.hesitationFound)) {
+    document.querySelector('.from-discovery[data-discovery-for="hesitation"]')?.classList.remove("hidden");
+  }
+}
+
+// --- Plan conditional fields ---
+function selectedChannelValues() {
+  return [...generatorForm.querySelectorAll('input[name="channels"]:checked')].map((c) => c.value.toLowerCase());
+}
+
+function syncPlanConditionals() {
+  const chans = selectedChannelValues();
+  const wa = chans.some((c) => c.includes("whatsapp"));
+  const ig = chans.some((c) => c.includes("reel") || c.includes("instagram"));
+  document.querySelector("#waFields")?.classList.toggle("visible", wa);
+  document.querySelector("#igFields")?.classList.toggle("visible", ig);
+  const hasList = generatorForm.elements.namedItem("hasBroadcastList")?.value || "";
+  document.querySelector("#broadcastSizeBlock")?.classList.toggle("hidden", hasList !== "no");
+}
+
+function syncCrossChannelWarnings() {
+  const el = document.querySelector("#crossChannelWarning");
+  if (!el) return;
+  const goal = (generatorForm.elements.namedItem("winningGoal")?.value || "").toLowerCase();
+  const waSelected = selectedChannelValues().some((c) => c.includes("whatsapp"));
+  let msg = "";
+  if (!waSelected && goal.includes("repeat")) {
+    msg = "Repeat buyers are best reached on WhatsApp — consider adding it";
+  } else if (!waSelected && goal.includes("list")) {
+    msg = "Building a list works best on WhatsApp — consider adding it";
+  }
+  el.textContent = msg;
+  el.classList.toggle("hidden", !msg);
+}
+
+// --- Two-button toggle groups (hasBroadcastList, instagramStories) ---
+function setToggleGroup(group, value) {
+  const wrap = document.querySelector(`[data-toggle-group="${group}"]`);
+  const hidden = generatorForm.elements.namedItem(group);
+  if (!wrap || !hidden) return;
+  hidden.value = value;
+  wrap.querySelectorAll(".toggle-btn").forEach((b) => b.classList.toggle("selected", b.dataset.value === value));
+}
+
+// --- Brand identity hidden inputs (sourced from onboarding / brands table) ---
+async function fillHiddenBrandIdentity() {
+  try {
+    const res = await fetch("/api/brand");
+    const data = await res.json().catch(() => ({}));
+    const b = data.brand;
+    if (!b) return;
+    const set = (name, val) => {
+      const el = generatorForm.elements.namedItem(name);
+      if (el && val) el.value = val;
+    };
+    set("brandMission", b.mission);
+    set("brandTone", b.brand_tone);
+    set("brandStage", b.brand_stage);
+    if (b.name) {
+      const bn = generatorForm.elements.namedItem("brandName");
+      if (bn && !bn.value.trim()) bn.value = b.name;
+    }
+    if (b.category) {
+      const cat = document.querySelector("#categorySelect");
+      if (cat && !cat.value) cat.value = b.category;
+    }
+  } catch {
+    /* non-fatal */
+  }
+}
+
+// --- Prefill order channel + delivery area from the last campaign ---
+async function prefillFromLastCampaign() {
+  try {
+    const res = await fetch("/api/campaigns");
+    const data = await res.json().catch(() => ({}));
+    const last = Array.isArray(data.campaigns) ? data.campaigns[0] : null;
+    if (!last) return;
+    const p = last.input_payload || {};
+    const oc = generatorForm.elements.namedItem("orderChannel");
+    const da = generatorForm.elements.namedItem("deliveryArea");
+    if (oc && p.orderChannel) oc.value = p.orderChannel;
+    if (da && !da.value.trim() && (p.deliveryArea || last.delivery_area)) {
+      da.value = p.deliveryArea || last.delivery_area;
+    }
+  } catch {
+    /* non-fatal */
+  }
+}
+
+// --- Reset Step 1 ---
+function resetStep1() {
+  const step = generatorForm.querySelector('[data-setup-step="1"]');
+  if (!step) return;
+  step.querySelectorAll("input, select").forEach((el) => {
+    if (el.name === "campaignScope") return; // keep hidden scope default
+    if (el.tagName === "SELECT") el.selectedIndex = 0;
+    else el.value = "";
+  });
+  updateDraftState();
+  scheduleWizardDraftSave();
+}
+
+/* ---------- Attach listeners ---------- */
+document.querySelector("#resetStep1")?.addEventListener("click", resetStep1);
+
+document.querySelector("#buyerGateYes")?.addEventListener("click", () => {
+  discoveryMode = false;
+  revealStep2Fields();
+});
+document.querySelector("#buyerGateNo")?.addEventListener("click", () => {
+  void openDiscoveryWeek();
+});
+
+generatorForm.elements.namedItem("product")?.addEventListener("input", updateBuyerGateQuestion);
+
+document.querySelectorAll('[data-toggle-group] .toggle-btn').forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const group = btn.closest("[data-toggle-group]").dataset.toggleGroup;
+    setToggleGroup(group, btn.dataset.value);
+    syncPlanConditionals();
+    scheduleWizardDraftSave();
+    updateDraftState();
+  });
+});
+
+generatorForm.querySelectorAll('input[name="channels"]').forEach((cb) => {
+  cb.addEventListener("change", () => {
+    syncPlanConditionals();
+    syncCrossChannelWarnings();
+    updateDraftState();
+    scheduleWizardDraftSave();
+  });
+});
+document.querySelector("#winningGoal")?.addEventListener("change", () => {
+  syncCrossChannelWarnings();
+  updateDraftState();
+});
+
+// Promo soft warning (non-blocking) when leaving Hook step empty.
+document.querySelector("#wizardNext")?.addEventListener("click", () => {
+  if (currentSetupStep === 3) {
+    const promo = generatorForm.elements.namedItem("promoHook")?.value?.trim();
+    document.querySelector("#promoSoftWarning")?.classList.toggle("hidden", Boolean(promo));
+  }
+});
+
+// Edge — differentiation AI assist.
+document.querySelector("#edgeDiffBtn")?.addEventListener("click", async () => {
+  const btn = document.querySelector("#edgeDiffBtn");
+  const status = document.querySelector("#edgeDiffStatus");
+  const target = generatorForm.elements.namedItem("brandDifferentiation");
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Writing…";
+  try {
+    const res = await fetch("/api/edge-assist", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        product: generatorForm.elements.namedItem("product")?.value?.trim() || "",
+        whatCanProve: generatorForm.elements.namedItem("whatCanProve")?.value?.trim() || "",
+        competitorsCantCopy: generatorForm.elements.namedItem("competitorsCantCopy")?.value?.trim() || "",
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.text) {
+      target.value = data.text;
+      if (status) showStatus(status, "");
+    } else if (status) {
+      showStatus(status, data.error || "Could not generate. Try again.", true);
+    }
+  } catch {
+    if (status) showStatus(status, "Could not generate. Try again.", true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+});
+
+// Boot v2 wiring.
+updateBuyerGateQuestion();
+syncPlanConditionals();
+void fillHiddenBrandIdentity();
+void prefillFromLastCampaign();

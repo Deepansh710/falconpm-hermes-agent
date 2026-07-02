@@ -41,6 +41,12 @@ function formatCapacity(input) {
   return parts.join(", ") || "not specified";
 }
 
+function toIntOrNull(value) {
+  if (value == null || String(value).trim() === "") return null;
+  const n = parseInt(String(value).replace(/[^0-9]/g, ""), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
 function parsePriceNumber(price) {
   if (price == null) return 0;
   const cleaned = String(price).replace(/,/g, "").match(/[0-9]+(\.[0-9]+)?/);
@@ -827,6 +833,22 @@ async function saveCampaign(input, plan) {
       goal: input.revenueGoal,
       audience: input.audience,
       channels: input.channels,
+      // Wizard v2 dedicated columns (persistence only — not plan-output logic).
+      order_channel: input.orderChannel || null,
+      delivery_area: input.deliveryArea || null,
+      what_can_prove: input.whatCanProve || null,
+      customer_voice: input.customerVoice || null,
+      competitors_cant_copy: input.competitorsCantCopy || null,
+      differentiation: input.brandDifferentiation || null,
+      whatsapp_contacts: toIntOrNull(input.whatsappContacts),
+      has_broadcast_list: input.hasBroadcastList || null,
+      broadcast_list_size: toIntOrNull(input.broadcastListSize),
+      whatsapp_frequency: input.whatsappFrequency || null,
+      instagram_followers: input.instagramFollowers || null,
+      reels_per_week: toIntOrNull(input.reelsPerWeek),
+      camera_comfort: input.cameraComfort || null,
+      instagram_stories: input.instagramStories || null,
+      winning_goal: input.winningGoal || null,
       plan_text: JSON.stringify(plan, null, 2),
       input_payload: input,
       metrics: {

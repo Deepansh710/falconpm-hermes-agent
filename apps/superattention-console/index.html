@@ -265,19 +265,23 @@
         </header>
 
         <div class="setup-wizard-nav" id="setupWizardNav">
-          <button class="wizard-step active" data-step="1" type="button">1. Basics</button>
-          <button class="wizard-step" data-step="2" type="button">2. Customer</button>
-          <button class="wizard-step" data-step="3" type="button">3. Offer</button>
-          <button class="wizard-step" data-step="4" type="button">4. Goal</button>
-          <button class="wizard-step" data-step="5" type="button">5. Story</button>
+          <button class="wizard-step active" data-step="1" type="button">1. Product</button>
+          <button class="wizard-step" data-step="2" type="button">2. Buyer</button>
+          <button class="wizard-step" data-step="3" type="button">3. Hook</button>
+          <button class="wizard-step" data-step="4" type="button">4. Edge</button>
+          <button class="wizard-step" data-step="5" type="button">5. Plan</button>
         </div>
 
         <div class="setup-grid">
           <form class="glass-card setup-form" id="generatorForm" novalidate>
             <div class="setup-step" data-setup-step="1">
-            <p class="form-section-title">Brand basics</p>
+            <div class="step-head-row">
+              <p class="form-section-title">Product</p>
+              <button class="btn-ghost small" id="resetStep1" type="button">Reset</button>
+            </div>
+            <input type="hidden" name="campaignScope" value="single_sku" />
             <div class="form-block">
-              <label class="field-label"><span class="material-symbols-outlined">label</span> Brand Identity</label>
+              <label class="field-label"><span class="material-symbols-outlined">label</span> Brand name</label>
               <p class="field-hint">Your registered or customer-facing brand name. <strong>Good:</strong> The Pickle Romance. <strong>Bad:</strong> my pickle biz</p>
               <input name="brandName" placeholder="e.g. The Pickle Romance" required minlength="2" />
             </div>
@@ -286,76 +290,84 @@
               <p class="field-hint">Pick the closest match — helps the AI use the right playbook.</p>
               <select name="category" id="categorySelect" required>
                 <option value="">Select category</option>
-                <option value="Homemade Indian pickles">Pickles &amp; condiments</option>
-                <option value="Snacks &amp; namkeen">Snacks &amp; namkeen</option>
-                <option value="Spices &amp; masalas">Spices &amp; masalas</option>
-                <option value="Sweets &amp; mithai">Sweets &amp; mithai</option>
-                <option value="Health &amp; wellness D2C">Health &amp; wellness</option>
-                <option value="Beauty &amp; skincare D2C">Beauty &amp; skincare</option>
-                <option value="Fashion &amp; accessories D2C">Fashion &amp; accessories</option>
-                <option value="Home &amp; kitchen D2C">Home &amp; kitchen</option>
-                <option value="__custom">Other — describe below</option>
+                <option value="Food &amp; beverages">Food &amp; beverages</option>
+                <option value="Health &amp; wellness">Health &amp; wellness</option>
+                <option value="Beauty &amp; skincare">Beauty &amp; skincare</option>
+                <option value="Fashion &amp; accessories">Fashion &amp; accessories</option>
+                <option value="Home &amp; lifestyle">Home &amp; lifestyle</option>
+                <option value="Other">Other</option>
               </select>
-              <input name="categoryCustom" id="categoryCustom" class="hidden" placeholder="e.g. Regional artisan foods" minlength="3" />
             </div>
             <div class="form-block">
-              <label class="field-label"><span class="material-symbols-outlined">inventory_2</span> Main Product</label>
+              <label class="field-label"><span class="material-symbols-outlined">inventory_2</span> Main product / Hero SKU</label>
               <p class="field-hint">The hero SKU for this 30-day sprint—not your full catalog.</p>
               <input name="product" placeholder="e.g. Aam ka Achar" required minlength="2" />
             </div>
-            <fieldset class="campaign-scope-field">
-              <legend class="field-label">This campaign is for</legend>
-              <div class="scope-options">
-                <label class="scope-option">
-                  <input type="radio" name="campaignScope" value="single_sku" checked />
-                  <span>One product (hero SKU above)</span>
-                </label>
-                <label class="scope-option">
-                  <input type="radio" name="campaignScope" value="whole_brand" />
-                  <span>Whole brand (multiple products)</span>
-                </label>
-              </div>
-            </fieldset>
             <div class="form-row">
               <div class="form-block">
-                <label class="field-label">Price (₹)</label>
+                <label class="field-label">Price</label>
                 <p class="field-hint">Selling price per unit. Numbers only—e.g. 399</p>
-                <input name="price" type="number" min="1" step="1" placeholder="399" required />
+                <div class="rupee-input">
+                  <span class="rupee-prefix">₹</span>
+                  <input name="price" type="number" min="1" step="1" placeholder="399" required />
+                </div>
               </div>
               <div class="form-block">
-                <label class="field-label" id="currentRevenueLabel">Last 30 days revenue for this product (₹)</label>
-                <p class="field-hint" id="currentRevenueHint">Use 0 if this SKU never sold. Use brand total only if you cannot split.</p>
-                <input name="currentRevenue" type="number" min="0" step="1" placeholder="10000" required />
+                <label class="field-label" id="currentRevenueLabel">Revenue last month — this product</label>
+                <p class="field-hint" id="currentRevenueHint">Enter 0 if you haven't sold yet</p>
+                <div class="rupee-input">
+                  <span class="rupee-prefix">₹</span>
+                  <input name="currentRevenue" type="number" min="0" step="1" placeholder="10000" required />
+                </div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-block">
+                <label class="field-label">How do customers order from you?</label>
+                <select name="orderChannel" required>
+                  <option value="WhatsApp with UPI before delivery">WhatsApp + UPI before delivery</option>
+                  <option value="WhatsApp COD">WhatsApp + cash on delivery</option>
+                  <option value="Instagram DM">Instagram DM</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div class="form-block">
+                <label class="field-label">Where do you deliver?</label>
+                <input name="deliveryArea" id="deliveryArea" placeholder="e.g. Faridabad, Sec 10, 15, 21" required />
               </div>
             </div>
             </div>
 
             <div class="setup-step hidden" data-setup-step="2">
-              <p class="form-section-title">Who is your customer?</p>
+              <p class="form-section-title">Buyer</p>
+
+              <div class="buyer-gate" id="buyerGate">
+                <p class="buyer-gate-q" id="buyerGateQuestion">Have you talked to someone who actually bought your product?</p>
+                <div class="buyer-gate-actions">
+                  <button class="btn-secondary" id="buyerGateYes" type="button">Yes, I have</button>
+                  <button class="btn-ghost" id="buyerGateNo" type="button">Not yet</button>
+                </div>
+              </div>
+
+              <div id="step2Fields" class="hidden">
               <p class="coach-intro">Answer in your own words — short is fine.</p>
               <div class="form-block audience-field" data-field="whoBuys">
-                <label class="field-label question-label">Who actually buys?</label>
+                <label class="field-label question-label">Who actually buys? <span class="from-discovery hidden" data-discovery-for="whoBuys"><span class="discovery-dot"></span>From your discovery</span></label>
                 <p class="field-hint field-hint-sub">Your Reels and WhatsApp must speak to one person, not everyone.</p>
                 <input name="whoBuys" placeholder="e.g. Working moms in Faridabad" />
-                <button class="not-sure-toggle" type="button" data-unsure-for="whoBuys">Not sure yet</button>
-                <input type="hidden" name="whoBuysUnsure" value="" />
               </div>
               <div class="form-block audience-field" data-field="whereLive">
-                <label class="field-label question-label">Where do they live?</label>
+                <label class="field-label question-label">Where do they live? <span class="from-discovery hidden" data-discovery-for="whereLive"><span class="discovery-dot"></span>From your discovery</span></label>
                 <p class="field-hint field-hint-sub">Areas you can deliver to — we name them in WhatsApp &amp; Reels.</p>
                 <input name="whereLive" placeholder="e.g. Faridabad Sector 15-21" />
-                <button class="not-sure-toggle" type="button" data-unsure-for="whereLive">Not sure yet</button>
-                <input type="hidden" name="whereLiveUnsure" value="" />
               </div>
               <div class="form-block audience-field" data-field="substitute">
-                <label class="field-label question-label">What do they buy instead of you?</label>
+                <label class="field-label question-label">What do they buy instead of you? <span class="from-discovery hidden" data-discovery-for="substitute"><span class="discovery-dot"></span>From your discovery</span></label>
                 <p class="field-hint field-hint-sub">Local auntie, supermarket brand, or D2C name (e.g. Farm Didi).</p>
                 <input name="substitute" placeholder="e.g. Mother's Recipe or local home chef" />
-                <button class="not-sure-toggle" type="button" data-unsure-for="substitute">Not sure yet</button>
-                <input type="hidden" name="substituteUnsure" value="" />
               </div>
               <div class="form-block">
-                <label class="field-label">Why do they hesitate?</label>
+                <label class="field-label">Why do they hesitate? <span class="from-discovery hidden" data-discovery-for="hesitation"><span class="discovery-dot"></span>From your discovery</span></label>
                 <p class="field-hint">The main reason they don't order yet.</p>
                 <select name="hesitation">
                   <option value="">Select or skip</option>
@@ -370,7 +382,7 @@
                 </select>
               </div>
               <div class="form-block">
-                <label class="field-label">How sure are you about this customer?</label>
+                <label class="field-label">How sure are you?</label>
                 <select name="audienceConfidence" required>
                   <option value="">Select</option>
                   <option value="very_sure">Very sure — I've sold to them</option>
@@ -383,21 +395,22 @@
               <div class="coach-cta-row">
                 <button class="btn-secondary" id="coachAudienceBtn" type="button">Help me write my customer summary</button>
               </div>
-              <button class="discovery-link" id="startDiscoveryBtn" type="button">Not sure about these customer questions? Start Discovery Week →</button>
               <p class="field-hint inline-error hidden" id="audienceCoachStatus"></p>
+              </div>
             </div>
 
             <div class="setup-step hidden" data-setup-step="3">
-              <p class="form-section-title">Your offer</p>
+              <p class="form-section-title">Hook</p>
               <div class="form-block">
                 <label class="field-label">What's in the jar / box?</label>
                 <p class="field-hint">Size, flavour, what they get for the price.</p>
                 <input name="productBundle" placeholder="e.g. 700g Aam ka Achar non-oily jar" required minlength="5" />
               </div>
               <div class="form-block">
-                <label class="field-label">Why order now? (promo hook)</label>
+                <label class="field-label">Why order now? (Promo Hook)</label>
                 <p class="field-hint">Free delivery, first-order off, combo — optional but powerful.</p>
                 <input name="promoHook" placeholder="e.g. Free next-day delivery in Faridabad" />
+                <p class="field-hint warn hidden" id="promoSoftWarning">Your plan will be stronger with a promo</p>
               </div>
               <input type="hidden" name="offerBundleDetail" />
               <input type="hidden" name="offerSizeVariant" />
@@ -415,113 +428,45 @@
               <input type="hidden" name="offer" />
             </div>
 
-            <div class="setup-step hidden" data-setup-step="5">
-            <p class="form-section-title">Brand story</p>
-            <div class="form-block">
-              <label class="field-label">Why did you start? (rough notes OK)</label>
-              <input name="missionWhyStarted" placeholder="e.g. Family missed grandma's pickle taste" />
-            </div>
-            <div class="form-block">
-              <label class="field-label">What meal moment are you selling?</label>
-              <input name="missionEmotional" placeholder="e.g. Sunday lunch, tiffin sides, nostalgia" />
-            </div>
-            <div class="form-block">
-              <label class="field-label">How should customers feel after first order?</label>
-              <input name="missionCustomerFeel" placeholder="e.g. Proud to serve ghar-ka taste" />
-            </div>
-            <div class="form-block">
-              <label class="field-label">Your mission (appears in plan)</label>
-              <p class="field-hint">2–3 sentences. Use the coach if you're not sure yet.</p>
-              <textarea name="brandMission" placeholder="Indian meals have always had a love affair with pickles..." required minlength="20"></textarea>
-              <button class="btn-secondary" id="coachMissionBtn" type="button">Help me write my mission</button>
-              <p class="field-hint inline-error hidden" id="missionCoachStatus"></p>
-            </div>
-            <div class="form-block">
-              <label class="field-label">What can you prove?</label>
-              <input name="diffProvable" placeholder="e.g. FSSAI, non-oily process, mishri not sugar" />
-            </div>
-            <div class="form-block">
-              <label class="field-label">What do customers say after tasting?</label>
-              <input name="diffCustomerSays" placeholder="e.g. Tastes like mother's recipe" />
-            </div>
-            <div class="form-block">
-              <label class="field-label">What competitors can't copy?</label>
-              <input name="diffCannotCopy" placeholder="e.g. Founder delivery in Faridabad" />
-            </div>
-            <div class="form-block">
-              <label class="field-label">What makes you different (appears in plan)</label>
-              <textarea name="brandDifferentiation" placeholder="Non-oily line, founder delivers in Faridabad" required minlength="10"></textarea>
-              <button class="btn-secondary" id="coachDiffBtn" type="button">Help me say what's different</button>
-              <p class="field-hint inline-error hidden" id="diffCoachStatus"></p>
-            </div>
-            <div class="form-row">
+            <div class="setup-step hidden" data-setup-step="4">
+              <p class="form-section-title">Your Edge</p>
+              <p class="coach-intro">What makes this product impossible to copy?</p>
               <div class="form-block">
-                <label class="field-label">Brand stage today</label>
-                <select name="brandStage" required>
-                  <option value="">Select stage</option>
-                  <option value="Idea — not selling yet">Idea — not selling yet</option>
-                  <option value="First sales — under 10 orders/month">First sales — under 10 orders/month</option>
-                  <option value="Early traction — under Rs 1 lakh/month">Early traction — under Rs 1 lakh/month</option>
-                  <option value="Scaling — Rs 1 lakh+/month">Scaling — Rs 1 lakh+/month</option>
-                </select>
+                <label class="field-label">What can you prove?</label>
+                <input name="whatCanProve" placeholder="e.g. FSSAI certified, no preservatives, mishri not sugar" />
               </div>
               <div class="form-block">
-                <label class="field-label">Brand tone</label>
-                <p class="field-hint">Tap 2–4 words — we'll combine them.</p>
-                <div class="tone-chips" id="toneChips">
-                  <button type="button" class="tone-chip" data-tone="homemade">homemade</button>
-                  <button type="button" class="tone-chip" data-tone="nostalgic">nostalgic</button>
-                  <button type="button" class="tone-chip" data-tone="trustworthy">trustworthy</button>
-                  <button type="button" class="tone-chip" data-tone="playful">playful</button>
-                  <button type="button" class="tone-chip" data-tone="premium">premium</button>
-                  <button type="button" class="tone-chip" data-tone="local">local</button>
-                </div>
-                <input name="brandTone" placeholder="homemade, nostalgic, trustworthy" required />
-              </div>
-            </div>
-            <p class="form-section-title">What didn't work before? (optional)</p>
-            <p class="field-hint">Tick what applies — we'll turn it into a note for the AI.</p>
-            <div class="form-row">
-              <div class="form-block">
-                <label class="field-label">Channel tried</label>
-                <select name="failChannel">
-                  <option value="">None / first campaign</option>
-                  <option value="Instagram Reels">Instagram Reels</option>
-                  <option value="WhatsApp">WhatsApp</option>
-                  <option value="Discount post">Discount post</option>
-                  <option value="Ads">Paid ads</option>
-                  <option value="Other">Other</option>
-                </select>
+                <label class="field-label">What do customers say after trying it?</label>
+                <input name="customerVoice" placeholder="e.g. Tastes like my nani's recipe" />
               </div>
               <div class="form-block">
-                <label class="field-label">What happened?</label>
-                <select name="failOutcome">
-                  <option value="">Select</option>
-                  <option value="views but no orders">Views but no orders</option>
-                  <option value="no views">Almost no views</option>
-                  <option value="inquiries but no payment">Chats but no payment</option>
-                  <option value="one-time buyers only">One-time buyers only</option>
-                </select>
+                <label class="field-label">What can competitors not copy?</label>
+                <input name="competitorsCantCopy" placeholder="e.g. Founder delivers in Faridabad personally" />
               </div>
-            </div>
-            <div class="form-block">
-              <label class="field-label">What to stop doing</label>
-              <input name="failStop" placeholder="e.g. Generic 20% off posts" />
-            </div>
-            <textarea name="pastFailures" class="hidden" aria-hidden="true"></textarea>
-            <button class="btn-ghost small" id="structureFailuresBtn" type="button">Turn into learning note</button>
+              <div class="form-block">
+                <label class="field-label">What makes you different? <span class="field-sublabel">(appears in your plan)</span></label>
+                <textarea name="brandDifferentiation" placeholder="e.g. We are non-oily pickles, made with utmost hygiene with flavours of mom's hand" required minlength="10"></textarea>
+                <button class="btn-secondary" id="edgeDiffBtn" type="button">Help me say what's different</button>
+                <p class="field-hint inline-error hidden" id="edgeDiffStatus"></p>
+              </div>
+              <!-- Brand identity now lives in Brand Onboarding (superattention_brands); carried as hidden inputs so plan generation still receives them. -->
+              <input type="hidden" name="brandMission" />
+              <input type="hidden" name="brandTone" />
+              <input type="hidden" name="brandStage" />
+              <input type="hidden" name="pastFailures" />
             </div>
 
-            <div class="setup-step hidden" data-setup-step="4">
-            <p class="form-section-title">Campaign goal</p>
+            <div class="setup-step hidden" data-setup-step="5">
+            <p class="form-section-title">Plan</p>
+            <p class="form-subsection">Campaign goal</p>
             <div class="form-block">
               <label class="field-label">What does winning look like?</label>
-              <p class="field-hint">Shapes how we prioritize your 30-day plan.</p>
-              <select name="northStarMetric" required>
-                <option value="orders">Orders / revenue</option>
-                <option value="list_size">WhatsApp list / inquiries</option>
-                <option value="repeat">Repeat buyers</option>
-                <option value="proof_of_hook">Prove one hook works</option>
+              <p class="field-hint">Shapes how we prioritise your 30-day plan.</p>
+              <select name="winningGoal" id="winningGoal" required>
+                <option value="More orders &amp; revenue">More orders &amp; revenue</option>
+                <option value="Build my customer list">Build my customer list</option>
+                <option value="Get repeat buyers">Get repeat buyers</option>
+                <option value="Test what messaging works">Test what messaging works</option>
               </select>
             </div>
             <div class="form-row">
@@ -558,62 +503,83 @@
               <p class="field-hint hidden" id="capacityWarning"></p>
             </div>
 
-            <div class="form-row">
-              <div class="form-block">
-                <label class="field-label">Order channel</label>
-                <select name="orderChannel" required>
-                  <option value="">Select</option>
-                  <option value="WhatsApp with UPI before delivery">WhatsApp + UPI before delivery</option>
-                  <option value="WhatsApp COD">WhatsApp + cash on delivery</option>
-                  <option value="Instagram DM">Instagram DM</option>
-                  <option value="Website + UPI">Website + UPI</option>
-                </select>
-              </div>
-              <div class="form-block">
-                <label class="field-label">Delivery area</label>
-                <p class="field-hint delivery-area-suggest hidden" id="deliveryAreaSuggest"></p>
-                <input name="deliveryArea" id="deliveryArea" placeholder="e.g. Faridabad + Delhi NCR" required />
-              </div>
-            </div>
-
             <p class="field-hint warn hidden" id="capacityBlockWarning"></p>
 
-            <p class="form-section-title">How much can you do each week?</p>
-            <div class="form-row">
+            <p class="form-subsection">Marketing Channels</p>
+            <p class="field-hint">Select all channels you will use this campaign.</p>
+            <fieldset class="channel-field" id="channelField">
+              <label><input type="checkbox" name="channels" value="Instagram Reels" checked /> Instagram Reels</label>
+              <label><input type="checkbox" name="channels" value="WhatsApp campaign" checked /> WhatsApp</label>
+            </fieldset>
+            <p class="field-hint warn hidden" id="crossChannelWarning"></p>
+
+            <div id="waFields" class="channel-conditional">
               <div class="form-block">
-                <label class="field-label">Reels per week</label>
-                <select name="reelsPerWeek" required>
-                  <option value="0">0 — WhatsApp only for now</option>
-                  <option value="1">1</option>
-                  <option value="2" selected>2</option>
-                  <option value="4">4</option>
-                  <option value="6">6</option>
-                </select>
+                <label class="field-label">How many people on your WhatsApp would actually buy something from you?</label>
+                <input name="whatsappContacts" type="number" min="0" step="1" placeholder="e.g. 50" />
               </div>
               <div class="form-block">
-                <label class="field-label">WhatsApp broadcasts?</label>
-                <select name="whatsappBroadcasts" required>
-                  <option value="yes" selected>Yes</option>
-                  <option value="no">No</option>
+                <label class="field-label">Do you have a WhatsApp broadcast list set up?</label>
+                <div class="two-btn-group" data-toggle-group="hasBroadcastList">
+                  <button type="button" class="toggle-btn" data-value="yes">Yes, I have one</button>
+                  <button type="button" class="toggle-btn" data-value="no">Not yet</button>
+                </div>
+                <input type="hidden" name="hasBroadcastList" />
+              </div>
+              <div class="form-block hidden" id="broadcastSizeBlock">
+                <label class="field-label">When you set it up, roughly how many people will you add?</label>
+                <input name="broadcastListSize" type="number" min="0" step="1" placeholder="e.g. 30" />
+              </div>
+              <div class="form-block">
+                <label class="field-label">How often can you send WhatsApp messages?</label>
+                <select name="whatsappFrequency">
+                  <option value="Daily">Daily</option>
+                  <option value="2-3 times a week">2-3 times a week</option>
+                  <option value="Once a week">Once a week</option>
+                  <option value="Occasionally">Occasionally</option>
                 </select>
               </div>
             </div>
-            <div class="form-row">
+
+            <div id="igFields" class="channel-conditional">
               <div class="form-block">
-                <label class="field-label">Instagram Stories?</label>
-                <select name="storiesPerWeek" required>
-                  <option value="yes">Yes, a few per week</option>
-                  <option value="no" selected>No</option>
+                <label class="field-label">Roughly how many Instagram followers do you have?</label>
+                <select name="instagramFollowers">
+                  <option value="Under 500">Under 500</option>
+                  <option value="500 – 2K">500 – 2K</option>
+                  <option value="2K – 10K">2K – 10K</option>
+                  <option value="10K+">10K+</option>
+                </select>
+              </div>
+              <div class="form-block">
+                <label class="field-label">How many Reels can you post per week?</label>
+                <select name="reelsPerWeek">
+                  <option value="1">1</option>
+                  <option value="2" selected>2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5+</option>
                 </select>
               </div>
               <div class="form-block">
                 <label class="field-label">Comfortable on camera?</label>
-                <select name="onCamera" required>
-                  <option value="yes">Yes</option>
-                  <option value="no">No — voice/text overlays OK</option>
+                <select name="cameraComfort">
+                  <option value="Yes — I'm comfortable on camera">Yes — I'm comfortable on camera</option>
+                  <option value="Voiceover only — no face">Voiceover only — no face</option>
+                  <option value="Text overlays only — no voice, no face">Text overlays only — no voice, no face</option>
                 </select>
               </div>
+              <div class="form-block">
+                <label class="field-label">Will you post Instagram Stories?</label>
+                <div class="two-btn-group" data-toggle-group="instagramStories">
+                  <button type="button" class="toggle-btn" data-value="Yes">Yes</button>
+                  <button type="button" class="toggle-btn" data-value="No">No</button>
+                </div>
+                <input type="hidden" name="instagramStories" />
+              </div>
             </div>
+
+            <p class="form-subsection">Time</p>
             <div class="form-block">
               <label class="field-label">Time for marketing per week</label>
               <select name="hoursPerWeek" required>
@@ -624,20 +590,9 @@
               </select>
             </div>
             <input type="hidden" name="contentCapacity" />
-
-            <fieldset class="channel-field">
-              <legend><span class="material-symbols-outlined">hub</span> Marketing Channels</legend>
-              <label><input type="checkbox" name="channels" value="Instagram Reels" checked /> Instagram Reels</label>
-              <label><input type="checkbox" name="channels" value="Website conversion" /> One-page Website</label>
-              <label><input type="checkbox" name="channels" value="WhatsApp campaign" checked /> WhatsApp</label>
-              <label><input type="checkbox" name="channels" value="Email campaign" /> Email</label>
-              <label><input type="checkbox" name="channels" value="Founder LinkedIn" /> LinkedIn</label>
-            </fieldset>
-
             </div>
 
             <div class="form-actions wizard-actions">
-              <button class="btn-ghost" id="loadSample" type="button">Load pickle example</button>
               <button class="btn-ghost hidden" id="wizardPrev" type="button">Back</button>
               <button class="btn-secondary" id="wizardNext" type="button">Next</button>
               <button class="btn-primary hidden" id="openBriefBtn" type="button">Review brief →</button>

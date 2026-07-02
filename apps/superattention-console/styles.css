@@ -3188,3 +3188,130 @@ button {
   align-self: flex-start;
   margin-top: 4px;
 }
+
+/* ===== Wizard v2 (Product/Buyer/Hook/Edge/Plan) ===== */
+.step-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.form-subsection {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--tertiary);
+  margin: 16px 0 4px;
+}
+
+.field-sublabel {
+  font-weight: 400;
+  color: var(--on-surface-variant);
+  font-size: 12px;
+}
+
+.rupee-input {
+  display: flex;
+  align-items: center;
+  background: var(--surface-container-low);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.rupee-input:focus-within {
+  border-color: var(--primary);
+}
+
+.rupee-prefix {
+  padding: 0 10px;
+  color: var(--on-surface-variant);
+  font-weight: 600;
+  border-right: 1px solid var(--outline-variant);
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+.rupee-input input {
+  border: none !important;
+  background: transparent !important;
+  flex: 1;
+}
+
+/* Buyer gate */
+.buyer-gate {
+  padding: 16px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-lg);
+  background: var(--surface-container-low);
+  margin-bottom: 16px;
+}
+
+.buyer-gate-q {
+  font-weight: 600;
+  color: var(--on-surface);
+  margin: 0 0 12px;
+}
+
+.buyer-gate-actions {
+  display: flex;
+  gap: 12px;
+}
+
+/* From-discovery labels */
+.from-discovery {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--secondary);
+  margin-left: 8px;
+}
+
+.discovery-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--secondary);
+  display: inline-block;
+}
+
+/* Two-button toggle groups (broadcast list / stories) */
+.two-btn-group {
+  display: flex;
+  gap: 10px;
+}
+
+.toggle-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--on-surface-variant);
+  background: var(--surface-container-low);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.toggle-btn.selected {
+  color: var(--on-secondary);
+  background: var(--secondary);
+  border-color: var(--secondary);
+}
+
+/* Conditional channel field groups */
+.channel-conditional {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.channel-conditional.visible {
+  display: flex;
+}
