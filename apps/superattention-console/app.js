@@ -2950,3 +2950,318 @@ syncRevenueScopeLabels();
 updateDraftState();
 setRingProgress(0);
 void loadCampaignHistory();
+
+/* ===================================================================
+   Access gate — 6-digit PIN + one-time brand onboarding.
+   Runs after the app has booted; both overlays are position:fixed and
+   cover the app until the user is unlocked / onboarded.
+   =================================================================== */
+(function initAccessGate() {
+  const UNLOCK_KEY = "superattention_unlocked";
+  const pinGate = document.querySelector("#pinGate");
+  const pinBoxes = document.querySelector("#pinBoxes");
+  const pinInputs = pinGate ? [...pinGate.querySelectorAll(".pin-digit")] : [];
+  const pinError = document.querySelector("#pinError");
+  const onboarding = document.querySelector("#brandOnboarding");
+
+  if (!pinGate) return;
+
+  // Brand context resolved during the onboarding fetch (needed for AI assist
+  // + the upsert). Falls back to the default brand when the table is empty.
+  let obBrandName = sampleBrand.brandName;
+  let obCategory = sampleBrand.category;
+
+  /* ---------- PIN ---------- */
+  function focusFirstPin() {
+    pinInputs[0]?.focus();
+  }
+
+  function clearPin() {
+    pinInputs.forEach((el) => {
+      el.value = "";
+      el.classList.remove("error");
+    });
+  }
+
+  function showPinError() {
+    pinError?.classList.remove("hidden");
+    pinInputs.forEach((el) => el.classList.add("error"));
+    pinBoxes.classList.add("shake");
+    setTimeout(() => {
+      pinBoxes.classList.remove("shake");
+      clearPin();
+      focusFirstPin();
+    }, 420);
+  }
+
+  async function submitPin() {
+    const pin = pinInputs.map((el) => el.value).join("");
+    if (pin.length !== pinInputs.length) return;
+
+    pinInputs.forEach((el) => (el.disabled = true));
+    try {
+      const res = await fetch("/api/verify-pin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pin }),
+      });
+      const data = await res.json().catch(() => ({}));
+      pinInputs.forEach((el) => (el.disabled = false));
+
+      if (res.ok && data.ok) {
+        sessionStorage.setItem(UNLOCK_KEY, "true");
+        pinGate.classList.add("hidden");
+        void runOnboardingGate();
+      } else {
+        showPinError();
+      }
+    } catch {
+      pinInputs.forEach((el) => (el.disabled = false));
+      showPinError();
+    }
+  }
+
+  function wirePinInputs() {
+    pinInputs.forEach((input, idx) => {
+      input.addEventListener("input", () => {
+        input.value = input.value.replace(/\D/g, "").slice(-1);
+        pinError?.classList.add("hidden");
+        input.classList.remove("error");
+        if (input.value && idx < pinInputs.length - 1) {
+          pinInputs[idx + 1].focus();
+        }
+        if (pinInputs.every((el) => el.value)) void submitPin();
+      });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Backspace" && !input.value && idx > 0) {
+          pinInputs[idx - 1].focus();
+        }
+      });
+    });
+    pinBoxes.addEventListener("paste", (e) => {
+      const digits = (e.clipboardData?.getData("text") || "").replace(/\D/g, "");
+      if (!digits) return;
+      e.preventDefault();
+      pinInputs.forEach((el, i) => (el.value = digits[i] || ""));
+      const next = Math.min(digits.length, pinInputs.length - 1);
+      pinInputs[next].focus();
+      if (pinInputs.every((el) => el.value)) void submitPin();
+    });
+  }
+
+  /* ---------- Brand onboarding ---------- */
+  const PRESET_TONES = [
+    "homemade", "nostalgic", "playful", "trustworthy",
+    "traditional", "authentic", "premium",
+  ];
+  const MAX_CUSTOM_CHIPS = 3;
+
+  function helperForCategory(category) {
+    const c = String(category || "").toLowerCase();
+    if (/(pickle|snack|namkeen|spice|masala|sweet|mithai|food|beverage|drink)/.test(c))
+      return "e.g. Sunday lunch, tiffin time, guest visits";
+    if (/(health|wellness)/.test(c))
+      return "e.g. morning routine, post-workout, feeling low";
+    if (/(beauty|skincare|skin)/.test(c))
+      return "e.g. getting ready, self-care Sunday, big day prep";
+    if (/(fashion|accessor|apparel|cloth)/.test(c))
+      return "e.g. first impression moment, date night, festival dressing";
+    if (/(home|kitchen|lifestyle)/.test(c))
+      return "e.g. hosting guests, winding down, gifting someone";
+    return "e.g. the moment it makes life easier";
+  }
+
+  function selectedTones() {
+    return [...onboarding.querySelectorAll(".ob-chip.selected")].map((c) =>
+      c.dataset.value || c.textContent.trim(),
+    );
+  }
+
+  function countCustomChips() {
+    return onboarding.querySelectorAll(".ob-chip[data-custom='true']").length;
+  }
+
+  function makeChip(label, { custom = false, selected = false } = {}) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "ob-chip" + (selected ? " selected" : "");
+    chip.textContent = label;
+    chip.dataset.value = label;
+    if (custom) chip.dataset.custom = "true";
+    chip.addEventListener("click", () => chip.classList.toggle("selected"));
+    return chip;
+  }
+
+  function renderChips() {
+    const wrap = document.querySelector("#obChips");
+    wrap.innerHTML = "";
+    PRESET_TONES.forEach((t) => wrap.appendChild(makeChip(t)));
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "ob-chip ob-chip-add";
+    addBtn.textContent = "+";
+    addBtn.addEventListener("click", () => {
+      if (countCustomChips() >= MAX_CUSTOM_CHIPS) return;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "ob-chip-input";
+      input.placeholder = "your word";
+      const commit = () => {
+        const word = input.value.trim();
+        if (word) {
+          wrap.insertBefore(makeChip(word, { custom: true, selected: true }), addBtn);
+        }
+        input.remove();
+        if (countCustomChips() < MAX_CUSTOM_CHIPS) addBtn.classList.remove("hidden");
+      };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        if (e.key === "Escape") input.remove();
+      });
+      input.addEventListener("blur", commit);
+      wrap.insertBefore(input, addBtn);
+      input.focus();
+    });
+    wrap.appendChild(addBtn);
+  }
+
+  async function runAssist(field, button) {
+    const targets = { 1: "#obWhyStarted", 2: "#obMission", 3: "#obDayBetter", 4: "#obFeeling" };
+    const target = document.querySelector(targets[field]);
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = "Writing…";
+    try {
+      const res = await fetch("/api/brand-assist", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          field: String(field),
+          notes: document.querySelector("#obWhyStarted").value.trim(),
+          brandName: obBrandName,
+          category: obCategory,
+          whyStarted: document.querySelector("#obWhyStarted").value.trim(),
+          mission: document.querySelector("#obMission").value.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.text) {
+        target.value = data.text;
+        target.closest(".ob-field")?.classList.remove("ob-invalid");
+      }
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  }
+
+  function validateOnboarding() {
+    const map = {
+      whyStarted: document.querySelector("#obWhyStarted").value.trim(),
+      mission: document.querySelector("#obMission").value.trim(),
+      dayBetter: document.querySelector("#obDayBetter").value.trim(),
+      feeling: document.querySelector("#obFeeling").value.trim(),
+    };
+    let ok = true;
+    Object.entries(map).forEach(([key, val]) => {
+      const field = onboarding.querySelector(`[data-ob-field="${key}"]`);
+      const bad = !val;
+      field?.classList.toggle("ob-invalid", bad);
+      if (bad) ok = false;
+    });
+    const tones = selectedTones();
+    const toneField = onboarding.querySelector('[data-ob-field="tone"]');
+    const toneBad = tones.length < 2;
+    toneField?.classList.toggle("ob-invalid", toneBad);
+    if (toneBad) ok = false;
+    return { ok, map, tones };
+  }
+
+  async function submitOnboarding(button) {
+    const { ok, map, tones } = validateOnboarding();
+    const obError = document.querySelector("#obError");
+    if (!ok) {
+      obError.textContent = "Fill in all fields to continue";
+      obError.classList.remove("hidden");
+      return;
+    }
+    obError.classList.add("hidden");
+    button.disabled = true;
+    const label = button.textContent;
+    button.textContent = "Saving…";
+    try {
+      const res = await fetch("/api/brand", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: obBrandName,
+          why_started: map.whyStarted,
+          mission: map.mission,
+          day_better_moment: map.dayBetter,
+          customer_feeling: map.feeling,
+          brand_tone: tones.join(", "),
+          brand_stage: document.querySelector("#obStage").value,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.saved) {
+        onboarding.classList.add("hidden");
+        switchView("setup");
+        showSetupStep(1);
+      } else {
+        obError.textContent = data.error || "Could not save. Please try again.";
+        obError.classList.remove("hidden");
+        button.disabled = false;
+        button.textContent = label;
+      }
+    } catch {
+      obError.textContent = "Could not save. Please try again.";
+      obError.classList.remove("hidden");
+      button.disabled = false;
+      button.textContent = label;
+    }
+  }
+
+  function showOnboarding() {
+    document.querySelector("#obDayBetterHelper").textContent = helperForCategory(obCategory);
+    renderChips();
+    onboarding.querySelectorAll(".ob-assist").forEach((btn) => {
+      btn.addEventListener("click", () => void runAssist(Number(btn.dataset.assist), btn));
+    });
+    document.querySelector("#obSubmit").addEventListener("click", (e) =>
+      void submitOnboarding(e.currentTarget),
+    );
+    onboarding.classList.remove("hidden");
+    document.querySelector("#obWhyStarted").focus();
+  }
+
+  async function runOnboardingGate() {
+    try {
+      const res = await fetch("/api/brand");
+      const data = await res.json().catch(() => ({}));
+      const brand = data.brand || null;
+      if (brand?.name) obBrandName = brand.name;
+      if (brand?.category) obCategory = brand.category;
+
+      const done = brand && brand.why_started && String(brand.why_started).trim();
+      if (done) {
+        onboarding.classList.add("hidden"); // already onboarded → straight to app
+      } else {
+        showOnboarding();
+      }
+    } catch {
+      // Fail open: a transient brand-fetch error shouldn't lock the user out.
+      onboarding.classList.add("hidden");
+    }
+  }
+
+  /* ---------- Boot the gate ---------- */
+  if (sessionStorage.getItem(UNLOCK_KEY) === "true") {
+    pinGate.classList.add("hidden");
+    void runOnboardingGate();
+  } else {
+    wirePinInputs();
+    focusFirstPin();
+  }
+})();

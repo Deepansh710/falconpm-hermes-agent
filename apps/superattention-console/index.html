@@ -17,6 +17,81 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <!-- ===== PIN access gate (visible by default; hidden by JS if unlocked) ===== -->
+    <div class="access-gate" id="pinGate">
+      <div class="access-gate-inner">
+        <div class="access-logo">
+          <div class="brand-icon"><span class="material-symbols-outlined">bolt</span></div>
+          <strong>superattention.ai</strong>
+        </div>
+        <h1 class="access-heading">Enter your access PIN</h1>
+        <div class="pin-boxes" id="pinBoxes">
+          <input class="pin-digit" inputmode="numeric" maxlength="1" autocomplete="off" aria-label="PIN digit 1" />
+          <input class="pin-digit" inputmode="numeric" maxlength="1" autocomplete="off" aria-label="PIN digit 2" />
+          <input class="pin-digit" inputmode="numeric" maxlength="1" autocomplete="off" aria-label="PIN digit 3" />
+          <input class="pin-digit" inputmode="numeric" maxlength="1" autocomplete="off" aria-label="PIN digit 4" />
+          <input class="pin-digit" inputmode="numeric" maxlength="1" autocomplete="off" aria-label="PIN digit 5" />
+          <input class="pin-digit" inputmode="numeric" maxlength="1" autocomplete="off" aria-label="PIN digit 6" />
+        </div>
+        <p class="pin-error hidden" id="pinError">Incorrect PIN</p>
+      </div>
+    </div>
+
+    <!-- ===== One-time brand onboarding (hidden until fetch says it's needed) ===== -->
+    <div class="access-gate onboarding-gate hidden" id="brandOnboarding">
+      <div class="onboarding-inner glass-card">
+        <h1 class="onboarding-heading">Tell us about your brand</h1>
+        <p class="onboarding-sub">You only need to do this once.</p>
+
+        <div class="ob-field" data-ob-field="whyStarted">
+          <label for="obWhyStarted">Why did you start this brand?</label>
+          <textarea id="obWhyStarted" rows="3" placeholder="Rough notes are fine"></textarea>
+          <button type="button" class="btn-ghost ob-assist" data-assist="1">Help me write this</button>
+        </div>
+
+        <div class="ob-field" data-ob-field="mission">
+          <label for="obMission">What does your brand exist to do?</label>
+          <span class="ob-sublabel">Your Mission</span>
+          <textarea id="obMission" rows="3" placeholder="2-3 sentences is enough"></textarea>
+          <button type="button" class="btn-ghost ob-assist" data-assist="2">Help me write my mission</button>
+        </div>
+
+        <div class="ob-field" data-ob-field="dayBetter">
+          <label for="obDayBetter">When does your product make someone's day better?</label>
+          <input type="text" id="obDayBetter" />
+          <span class="ob-helper" id="obDayBetterHelper"></span>
+          <button type="button" class="btn-ghost ob-assist" data-assist="3">Help me describe this</button>
+        </div>
+
+        <div class="ob-field" data-ob-field="feeling">
+          <label for="obFeeling">How should customers feel after their first order?</label>
+          <input type="text" id="obFeeling" placeholder="e.g. Like they found something special" />
+          <button type="button" class="btn-ghost ob-assist" data-assist="4">Help me describe this</button>
+        </div>
+
+        <div class="ob-field" data-ob-field="tone">
+          <label>What words describe your brand?</label>
+          <span class="ob-sublabel">Brand Tone</span>
+          <div class="ob-chips" id="obChips"></div>
+        </div>
+
+        <div class="ob-field" data-ob-field="stage">
+          <label for="obStage">Where is your brand today?</label>
+          <span class="ob-sublabel">Brand Stage</span>
+          <select id="obStage">
+            <option value="Just starting — no sales yet">Just starting — no sales yet</option>
+            <option value="Early sales — under ₹5K/month">Early sales — under ₹5K/month</option>
+            <option value="Growing — ₹5K to ₹25K/month">Growing — ₹5K to ₹25K/month</option>
+            <option value="Scaling — ₹25K to ₹1L/month">Scaling — ₹25K to ₹1L/month</option>
+            <option value="Established — above ₹1L/month">Established — above ₹1L/month</option>
+          </select>
+        </div>
+
+        <p class="ob-error hidden" id="obError">Fill in all fields to continue</p>
+        <button type="button" class="btn-primary ob-submit" id="obSubmit">Save and continue →</button>
+      </div>
+    </div>
+
     <aside class="sidebar">
       <div class="sidebar-brand">
         <div class="brand-icon">
