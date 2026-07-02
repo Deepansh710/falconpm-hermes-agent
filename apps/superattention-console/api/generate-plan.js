@@ -18,6 +18,10 @@ function tableName() {
   return process.env.SUPABASE_CAMPAIGNS_TABLE || "campaigns";
 }
 
+function brandsTableName() {
+  return process.env.SUPABASE_BRANDS_TABLE || "superattention_brands";
+}
+
 function supabaseHeaders(serviceRoleKey, extra = {}) {
   return {
     apikey: serviceRoleKey,
@@ -754,6 +758,49 @@ Your previous response was truncated or invalid JSON. Return the same plan again
   );
 }
 
+// Upsert the brand into superattention_brands using name as the unique key,
+// so a returning founder who edits brand details updates the row in place.
+// Returns the brand id to link onto the campaign row. PostgREST upsert =
+// POST with on_conflict=name + Prefer: resolution=merge-duplicates
+// (equivalent to ON CONFLICT (name) DO UPDATE).
+async function upsertBrand(input) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const table = brandsTableName();
+
+  const brandRow = {
+    name: input.brandName,
+    category: input.category,
+    product: input.product,
+    price: input.price,
+    mission: input.brandMission,
+    differentiation: input.brandDifferentiation,
+    tone: input.brandTone,
+    stage: input.brandStage,
+    delivery_area: input.deliveryArea,
+  };
+
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/${table}?on_conflict=name`,
+    {
+      method: "POST",
+      headers: supabaseHeaders(serviceRoleKey, {
+        "content-type": "application/json",
+        prefer: "resolution=merge-duplicates,return=representation",
+      }),
+      body: JSON.stringify(brandRow),
+    },
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data?.message || "Failed to upsert brand to Supabase");
+  }
+
+  return Array.isArray(data) && data[0] ? data[0].id : null;
+}
+
 async function saveCampaign(input, plan) {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -765,6 +812,8 @@ async function saveCampaign(input, plan) {
 
   await pauseLiveCampaignsForBrand(input.brandName);
 
+  const brandId = await upsertBrand(input);
+
   const response = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
     method: "POST",
     headers: supabaseHeaders(serviceRoleKey, {
@@ -773,12 +822,11 @@ async function saveCampaign(input, plan) {
     }),
     body: JSON.stringify({
       brand_name: input.brandName,
+      brand_id: brandId,
       product: input.product,
       goal: input.revenueGoal,
       audience: input.audience,
       channels: input.channels,
-      delivery_area: input.deliveryArea,
-      content_capacity: formatCapacity(input),
       plan_text: JSON.stringify(plan, null, 2),
       input_payload: input,
       metrics: {
