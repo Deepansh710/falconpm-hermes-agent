@@ -2212,6 +2212,102 @@ async function deleteCampaign(id) {
   updateDraftState();
 }
 
+function briefRupee(v) {
+  const digits = String(v || "").replace(/[^0-9]/g, "");
+  if (!digits) return "";
+  return "₹" + Number(digits).toLocaleString("en-IN");
+}
+
+function briefChannels(channels) {
+  return (channels || [])
+    .map((c) => c.replace(/\s*campaign$/i, "").trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
+// Progressive Operator Brief — sections and lines appear only when their
+// source field has a value. Data comes entirely from getFormInput() (live
+// form values); this function only decides what to show.
+function renderOperatorBrief(input) {
+  const titleEl = document.querySelector("#briefTitle");
+  const body = document.querySelector("#briefBody");
+  if (!body || !titleEl) return;
+
+  if (input.product) {
+    const monthYear = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
+    titleEl.textContent = `${input.product} — ${monthYear}`;
+  } else {
+    titleEl.textContent = "Your growth brief";
+  }
+
+  const sections = [
+    {
+      heading: "PRODUCT",
+      trigger: input.product,
+      lines: [
+        ["Product", input.product],
+        ["Price", briefRupee(input.price)],
+        ["Order channel", input.orderChannel],
+        ["Delivery", input.deliveryArea],
+      ],
+    },
+    {
+      heading: "BUYER",
+      trigger: input.whoBuys,
+      lines: [
+        ["Customer", input.whoBuys],
+        ["Location", input.whereLive],
+        ["Instead of", input.substitute],
+        ["Hesitation", input.hesitationLabel || input.hesitation],
+      ],
+    },
+    {
+      heading: "HOOK",
+      trigger: input.productBundle,
+      lines: [
+        ["Offer", input.productBundle],
+        ["Promo", input.promoHook],
+      ],
+    },
+    {
+      heading: "EDGE",
+      trigger: input.brandDifferentiation,
+      lines: [
+        ["Different because", input.brandDifferentiation],
+        ["Proof", input.whatCanProve],
+        ["They say", input.customerVoice],
+      ],
+    },
+    {
+      // Winning goal has a default value, so trigger PLAN on the revenue goal
+      // (empty on load) to honour the blank-start requirement.
+      heading: "PLAN",
+      trigger: input.goalAmount,
+      lines: [
+        ["Goal", input.winningGoal],
+        ["Target", briefRupee(input.goalAmount)],
+        ["Channels", briefChannels(input.channels)],
+        ["Capacity", input.hoursPerWeek ? `~${input.hoursPerWeek} hrs/week` : ""],
+      ],
+    },
+  ];
+
+  body.innerHTML = sections
+    .filter((s) => s.trigger && String(s.trigger).trim())
+    .map((s) => {
+      const rows = s.lines
+        .filter(([, v]) => v && String(v).trim())
+        .map(
+          ([label, v]) =>
+            `<div class="brief-line"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(v))}</strong></div>`,
+        )
+        .join("");
+      if (!rows) return "";
+      return `<div class="brief-section"><span class="brief-head">${escapeHtml(s.heading)}</span>${rows}</div>`;
+    })
+    .join("");
+}
+
 function updateDraftState() {
   const input = getFormInput();
   const tracker = getTrackerData();
@@ -2242,26 +2338,7 @@ function updateDraftState() {
     ? tipParts.join(" ")
     : "Complete Step 4 (goal + channels) to see your target.";
 
-  document.querySelector("#briefTitle").textContent = input.product ? `${input.product} growth brief` : "Waiting for inputs";
-  document.querySelector("#briefCopy").textContent = input.audience
-    ? `Customer: ${input.audience.slice(0, 120)}${input.audience.length > 120 ? "…" : ""}`
-    : "Step through the wizard — we help you think before we plan.";
-
-  const briefRows = [
-    showGoal ? ["Goal", input.revenueGoal] : null,
-    ["Promo", input.promoHook || "—"],
-    ["Hesitation", input.hesitationLabel || "—"],
-    ["Capacity", input.contentCapacity],
-    ["Stage", input.brandStage],
-  ].filter(Boolean);
-  document.querySelector("#briefStack").innerHTML = briefRows
-    .filter(([, value]) => value && value !== "—")
-    .map(
-      ([label, value]) => `
-        <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
-      `,
-    )
-    .join("");
+  renderOperatorBrief(input);
 
   document.querySelector("#dashboardGoalLabel").textContent = showGoal && units
     ? `Goal: ${units} units`
