@@ -3753,8 +3753,17 @@ function startNewCampaign() {
 
 // Listeners
 document.querySelector("#newCampaignBtn")?.addEventListener("click", startNewCampaign);
-document.querySelector("#buildFirstCampaignBtn")?.addEventListener("click", startNewCampaign);
-document.querySelector("#detailBackBtn")?.addEventListener("click", goToDashboard);
+// stopPropagation: these buttons sit inside <section data-view="…">, and a
+// document-level [data-view] handler would otherwise bubble-match the section
+// and immediately switch the view back.
+document.querySelector("#buildFirstCampaignBtn")?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  startNewCampaign();
+});
+document.querySelector("#detailBackBtn")?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  goToDashboard();
+});
 document.querySelector("#campaignLearningsBtn")?.addEventListener("click", () => {
   document.querySelector("#learningsTooltip")?.classList.toggle("hidden");
 });
