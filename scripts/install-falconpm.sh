@@ -73,6 +73,22 @@ link "$REPO_ROOT/MEMORY.md" "$HERMES_HOME/memories/MEMORY.md"
 link_tree "$REPO_ROOT/skills/productivity/d2c-growth-experiment-planner" \
           "$HERMES_HOME/skills/d2c-growth-experiment-planner"
 
+# Default model/provider so a bare `hermes -z "..."` works out of the box.
+# Without this, oneshot has no model to resolve and fails with "no final
+# response was produced". Override by editing ~/.hermes/config.yaml.
+FALCONPM_MODEL="${FALCONPM_MODEL:-claude-sonnet-4-6}"
+FALCONPM_PROVIDER="${FALCONPM_PROVIDER:-anthropic}"
+if command -v hermes >/dev/null 2>&1; then
+  hermes config set model "$FALCONPM_MODEL" >/dev/null 2>&1 \
+    && echo "  CONF  model    = $FALCONPM_MODEL" \
+    || echo "  WARN  could not set default model (set it manually: hermes config set model $FALCONPM_MODEL)"
+  hermes config set provider "$FALCONPM_PROVIDER" >/dev/null 2>&1 \
+    && echo "  CONF  provider = $FALCONPM_PROVIDER" \
+    || echo "  WARN  could not set default provider (set it manually: hermes config set provider $FALCONPM_PROVIDER)"
+else
+  echo "  SKIP  default model config (hermes not on PATH yet — run 'pip install -e .' first, then re-run this script)"
+fi
+
 echo
 echo "Done. Verify with:"
 echo "  ls -la \"$HERMES_HOME/SOUL.md\" \"$HERMES_HOME/memories/MEMORY.md\" \"$HERMES_HOME/skills/d2c-growth-experiment-planner\""
