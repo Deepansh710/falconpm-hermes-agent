@@ -2115,7 +2115,7 @@ function parsePlanFromRow(row) {
   }
 }
 
-function loadCampaignFromHistory(id, { duplicate = false } = {}) {
+function loadCampaignFromHistory(id, { duplicate = false, detail = false } = {}) {
   const row = campaignHistory.find((item) => item.id === id);
   if (!row) return;
 
@@ -2182,7 +2182,15 @@ function loadCampaignFromHistory(id, { duplicate = false } = {}) {
 
   renderPlanChangesCard(null);
 
-  switchView("campaign");
+  if (detail) {
+    renderDetailHeader(row);
+    switchView("campaign-detail");
+    if (location.pathname !== `/campaign/${id}`) {
+      history.pushState({ campaignId: id }, "", `/campaign/${id}`);
+    }
+  } else {
+    switchView("campaign");
+  }
   updateDraftState();
 }
 
@@ -3605,3 +3613,172 @@ updateBuyerGateQuestion();
 syncPlanConditionals();
 void fillHiddenBrandIdentity();
 void prefillFromLastCampaign();
+
+/* ===================================================================
+   Session 4 — landing states, cards grid, campaign detail routing.
+   =================================================================== */
+function monthYearOf(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString("en-US", { month: "long", year: "numeric" });
+}
+
+function campaignName(row) {
+  return `${row.product || "Campaign"} — ${monthYearOf(row.created_at)}`;
+}
+
+function cardStatus(row) {
+  return row.plan_text
+    ? { label: "LIVE", cls: "badge-live" }
+    : { label: "DRAFT", cls: "badge-draft" };
+}
+
+function earnedLabel(row) {
+  const raw = row.metrics?.tracker?.revenue;
+  const digits = String(raw || "").replace(/[^0-9]/g, "");
+  const n = digits ? Number(digits) : 0;
+  return `₹${n.toLocaleString("en-IN")} earned`;
+}
+
+function renderCampaignCards(campaigns) {
+  const grid = document.querySelector("#campaignCardsGrid");
+  if (!grid) return;
+  const sorted = [...campaigns].sort(
+    (a, b) => new Date(b.created_at) - new Date(a.created_at),
+  );
+  grid.innerHTML = sorted
+    .map((row) => {
+      const st = cardStatus(row);
+      return `
+        <article class="campaign-grid-card glass-card" data-open-campaign="${escapeHtml(row.id)}" role="button" tabindex="0">
+          <div class="cgc-head">
+            <h3>${escapeHtml(campaignName(row))}</h3>
+            <span class="cgc-badge ${st.cls}">${st.label}</span>
+          </div>
+          <p class="cgc-sku">${escapeHtml(row.product || "")}</p>
+          <div class="cgc-meta">
+            <span>Goal: ${escapeHtml(row.goal || "—")}</span>
+            <span>${escapeHtml(earnedLabel(row))}</span>
+          </div>
+        </article>`;
+    })
+    .join("");
+}
+
+function lockSidebar(locked) {
+  document.querySelectorAll('#sidebarNav .nav-link[data-view]').forEach((link) => {
+    if (link.dataset.view === "dashboard") return;
+    link.classList.toggle("locked", locked);
+    if (locked) link.setAttribute("title", "Complete your first campaign to unlock");
+    else link.removeAttribute("title");
+  });
+}
+
+async function loadDashboard() {
+  const grid = document.querySelector("#campaignCardsGrid");
+  const promptB = document.querySelector("#stateBPrompt");
+  const newBtn = document.querySelector("#newCampaignBtn");
+  try {
+    const res = await fetch("/api/campaigns");
+    const data = await res.json().catch(() => ({}));
+    campaignHistory = data.campaigns || [];
+  } catch {
+    campaignHistory = [];
+  }
+
+  if (campaignHistory.length) {
+    // State C — campaigns exist.
+    promptB?.classList.add("hidden");
+    grid?.classList.remove("hidden");
+    renderCampaignCards(campaignHistory);
+    newBtn?.classList.remove("hidden");
+    lockSidebar(false);
+  } else {
+    // State B — brand exists, no campaigns.
+    grid?.classList.add("hidden");
+    promptB?.classList.remove("hidden");
+    newBtn?.classList.add("hidden");
+    lockSidebar(true);
+  }
+}
+
+function renderDetailHeader(row) {
+  const nameEl = document.querySelector("#detailCampaignName");
+  if (nameEl) nameEl.textContent = campaignName(row);
+  const badge = document.querySelector("#detailStatusBadge");
+  if (badge) {
+    const st = cardStatus(row);
+    badge.textContent = st.label;
+    badge.className = `detail-status-badge ${st.cls}`;
+  }
+}
+
+async function openCampaignDetail(id) {
+  if (!campaignHistory.find((c) => c.id === id)) {
+    try {
+      const res = await fetch("/api/campaigns");
+      const data = await res.json().catch(() => ({}));
+      campaignHistory = data.campaigns || [];
+    } catch {
+      /* ignore */
+    }
+  }
+  const row = campaignHistory.find((c) => c.id === id);
+  if (!row) {
+    goToDashboard();
+    return;
+  }
+  loadCampaignFromHistory(id, { detail: true });
+}
+
+function goToDashboard() {
+  if (location.pathname !== "/") history.pushState({}, "", "/");
+  switchView("dashboard");
+  void loadDashboard();
+}
+
+function handleRoute() {
+  const m = location.pathname.match(/^\/campaign\/([^/]+)$/);
+  if (m) {
+    void openCampaignDetail(decodeURIComponent(m[1]));
+  } else {
+    switchView("dashboard");
+    void loadDashboard();
+  }
+}
+
+function startNewCampaign() {
+  showSetupStep(1);
+  switchView("setup");
+}
+
+// Listeners
+document.querySelector("#newCampaignBtn")?.addEventListener("click", startNewCampaign);
+document.querySelector("#buildFirstCampaignBtn")?.addEventListener("click", startNewCampaign);
+document.querySelector("#detailBackBtn")?.addEventListener("click", goToDashboard);
+document.querySelector("#campaignLearningsBtn")?.addEventListener("click", () => {
+  document.querySelector("#learningsTooltip")?.classList.toggle("hidden");
+});
+document.querySelector("#campaignCardsGrid")?.addEventListener("click", (e) => {
+  const card = e.target.closest("[data-open-campaign]");
+  if (card) void openCampaignDetail(card.dataset.openCampaign);
+});
+// Refresh dashboard state whenever the Dashboard nav item is used.
+document.querySelector('#sidebarNav .nav-link[data-view="dashboard"]')?.addEventListener("click", () => {
+  void loadDashboard();
+});
+// Block locked sidebar items (State B).
+document.querySelector("#sidebarNav")?.addEventListener(
+  "click",
+  (e) => {
+    const link = e.target.closest(".nav-link[data-view]");
+    if (link && link.classList.contains("locked")) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  },
+  true,
+);
+window.addEventListener("popstate", handleRoute);
+
+// Initial route (dashboard state B/C or deep-linked campaign detail).
+handleRoute();

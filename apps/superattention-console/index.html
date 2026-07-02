@@ -14,7 +14,7 @@
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <!-- ===== PIN access gate (visible by default; hidden by JS if unlocked) ===== -->
@@ -127,9 +127,6 @@
       </nav>
 
       <div class="sidebar-footer">
-        <button class="btn-primary sidebar-cta" data-view="setup" type="button">
-          New Campaign
-        </button>
         <a class="nav-link muted" href="#"><span class="material-symbols-outlined">help</span> Support</a>
       </div>
     </aside>
@@ -147,6 +144,7 @@
         </div>
       </div>
       <div class="topbar-right">
+        <button class="btn-primary hidden" id="newCampaignBtn" type="button">+ New Campaign</button>
         <button class="btn-secondary" id="optimizeBtn" type="button">Optimize Now</button>
         <button class="icon-btn" type="button" aria-label="Notifications">
           <span class="material-symbols-outlined">notifications</span>
@@ -162,6 +160,29 @@
           <h1>superattention.ai</h1>
           <p>Turn attention into revenue.</p>
         </div>
+
+        <!-- STATE B: brand exists, zero campaigns -->
+        <div class="state-b-prompt hidden" id="stateBPrompt">
+          <div class="glass-card prompt-card">
+            <h2>You're set up.</h2>
+            <p>Now build your first campaign.</p>
+            <button class="btn-primary" id="buildFirstCampaignBtn" type="button">+ Build my first campaign</button>
+          </div>
+        </div>
+
+        <!-- STATE C: brand exists, at least one campaign -->
+        <div class="campaign-cards-grid hidden" id="campaignCardsGrid"></div>
+      </section>
+
+      <!-- Campaign Detail (/campaign/[id]) -->
+      <section class="view" id="view-campaign-detail" data-view="campaign-detail">
+        <header class="page-header row detail-header">
+          <div>
+            <button class="btn-ghost small" id="detailBackBtn" type="button">← Back to campaigns</button>
+            <h1 id="detailCampaignName">Campaign</h1>
+          </div>
+          <span class="detail-status-badge" id="detailStatusBadge">DRAFT</span>
+        </header>
 
         <div class="bento-grid">
           <div class="glass-card progress-card ai-pulse">
@@ -254,6 +275,15 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <div class="learnings-block">
+          <button class="btn-ghost" id="campaignLearningsBtn" type="button">
+            Campaign Learnings <span class="coming-soon-badge">Coming Soon</span>
+          </button>
+          <p class="learnings-tooltip hidden" id="learningsTooltip">
+            Soon you'll be able to log what worked, what didn't, and carry those learnings into your next campaign automatically.
+          </p>
         </div>
       </section>
 
@@ -927,6 +957,6 @@
       </div>
     </div>
 
-    <script src="./app.js"></script>
+    <script src="/app.js"></script>
   </body>
 </html>

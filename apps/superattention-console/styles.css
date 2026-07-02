@@ -3373,3 +3373,161 @@ button {
 .discovery-restart-link:hover {
   text-decoration: underline;
 }
+
+/* ===== Session 4 — landing states, cards grid, detail ===== */
+
+/* State B prompt */
+.state-b-prompt {
+  display: flex;
+  justify-content: center;
+  padding: 48px 16px;
+}
+
+.prompt-card {
+  max-width: 440px;
+  width: 100%;
+  padding: 40px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.prompt-card h2 {
+  font-size: 24px;
+  margin: 0;
+}
+
+.prompt-card p {
+  color: var(--on-surface-variant);
+  margin: 0 0 8px;
+}
+
+/* State C cards grid */
+.campaign-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+@media (max-width: 1000px) {
+  .campaign-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 680px) {
+  .campaign-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.campaign-grid-card {
+  padding: 20px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.campaign-grid-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary);
+}
+
+.cgc-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cgc-head h3 {
+  font-size: 16px;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.cgc-sku {
+  color: var(--on-surface-variant);
+  font-size: 13px;
+  margin: 0;
+}
+
+.cgc-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--on-surface);
+  border-top: 1px solid var(--outline-variant);
+  padding-top: 10px;
+  margin-top: 4px;
+}
+
+/* Status badges (cards + detail) */
+.cgc-badge,
+.detail-status-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 4px 10px;
+  border-radius: var(--radius-xl);
+  white-space: nowrap;
+}
+
+.badge-live {
+  color: var(--on-secondary);
+  background: var(--secondary);
+}
+
+.badge-draft {
+  color: var(--on-surface-variant);
+  background: var(--surface-container-high);
+}
+
+/* Locked sidebar (State B) */
+#sidebarNav .nav-link.locked {
+  opacity: 0.4;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* Detail header */
+.detail-header {
+  align-items: flex-start;
+}
+
+.detail-header h1 {
+  margin: 8px 0 0;
+}
+
+/* Learnings block */
+.learnings-block {
+  margin-top: 24px;
+}
+
+.coming-soon-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  margin-left: 8px;
+  border-radius: var(--radius-xl);
+  color: var(--on-surface-variant);
+  background: var(--surface-container-high);
+}
+
+.learnings-tooltip {
+  margin-top: 10px;
+  max-width: 420px;
+  font-size: 13px;
+  color: var(--on-surface-variant);
+  background: var(--surface-container-low);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
